@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- UI sketch of the Jeong timeline. Open directly in a browser. Sample data only. -->
+<title>Jeong Timeline Sketch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@200;300;600&family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a printed chart of a year. Huge month numerals on top, photo strips standing on one axis,
+   hairline lanes below, a single red line for today, and a palette strip along the bottom. */
+:root {
+  --hanji: #F1E8D6;  --meok: #2A2724;  --straw: #D9C59A;
+  --persimmon: #B2432F;  --crimson: #8E2A2E;  --ochre: #D49A36;
+  --pine: #3F4B43;  --celadon: #7F9C8A;  --indigo: #34405C;
+
+  --bg: var(--hanji);
+  --surface: color-mix(in oklab, var(--hanji) 55%, white);
+  --text: var(--meok);
+  --muted: color-mix(in oklab, var(--meok) 58%, var(--hanji));
+  --faint: color-mix(in oklab, var(--meok) 30%, var(--hanji));
+  --line: color-mix(in oklab, var(--meok) 16%, transparent);
+  --now: var(--persimmon);
+  --grain-opacity: .35;
+
+  --numerals: "Hahmlet", "Gowun Batang", Georgia, serif;
+  --display: "Gowun Batang", "Nanum Myeongjo", Georgia, serif;
+  --body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1D1A17; --surface: #27231F; --text: #EEE5D3;
+    --muted: #A69C8D; --faint: #6C6458; --line: color-mix(in oklab, #F1E8D6 13%, transparent);
+    --now: #D0634A; --grain-opacity: .18; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1D1A17; --surface: #27231F; --text: #EEE5D3;
+  --muted: #A69C8D; --faint: #6C6458; --line: color-mix(in oklab, #F1E8D6 13%, transparent);
+  --now: #D0634A; --grain-opacity: .18; color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: var(--body); font-size: 15px;
+  display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; position: relative;
+}
+/* hanji fibre: a faint paper grain over everything */
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 20; opacity: var(--grain-opacity); mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .28 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ochre); outline-offset: 2px; }
+
+/* Top bar */
+.bar {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding-block: 14px 6px;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+}
+.brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+.brand svg { width: 30px; height: 30px; color: var(--persimmon); flex: none; }
+.brand b { font-family: var(--display); font-size: 1.25rem; font-weight: 700; }
+.brand small { font-family: var(--mono); font-size: .72rem; color: var(--muted); letter-spacing: .06em; }
+.seg { display: flex; padding: 3px; gap: 2px; border-radius: 999px; border: 1px solid var(--line); }
+.seg button { border: 0; background: none; cursor: pointer; border-radius: 999px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.zoom button { padding: 5px 14px; font-size: .82rem; }
+.mode button { width: 32px; height: 28px; display: grid; place-items: center; }
+.mode svg { width: 16px; height: 16px; fill: currentColor; stroke: currentColor; stroke-width: 1.8; }
+.mode button[data-mode="light"] svg path { fill: none; }
+
+/* Stage */
+.stage { position: relative; min-height: 0; }
+.scroller { position: absolute; inset: 0; overflow-x: auto; overflow-y: hidden; cursor: grab; scrollbar-width: thin; }
+.scroller.dragging { cursor: grabbing; }
+.track { position: relative; height: 100%; display: grid; grid-template-rows: minmax(90px, 20%) minmax(150px, 1fr) repeat(5, minmax(34px, 7.5%)) 28px; }
+
+.numerals { position: relative; }
+.month { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); padding: 4px 0 0 10px; overflow: hidden; }
+.month b {
+  display: block; font-family: var(--numerals); font-weight: 200; line-height: .82;
+  font-size: clamp(64px, 13vh, 150px); letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+}
+.month small { font-family: var(--mono); font-size: .7rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+
+.strips { position: relative; border-bottom: 1px solid var(--text); }
+.ticks { position: absolute; left: 0; right: 0; bottom: -7px; height: 7px; }
+.ticks i { position: absolute; bottom: 0; width: 1px; height: 4px; background: var(--faint); }
+.ticks i.m { height: 7px; background: var(--text); }
+.strip {
+  position: absolute; bottom: 0; transform: translateX(-50%);
+  border: 0; padding: 0; cursor: pointer; border-radius: 2px 2px 0 0;
+  background:
+    linear-gradient(to top, color-mix(in oklab, var(--c) 55%, transparent), transparent 75%),
+    repeating-linear-gradient(0deg, color-mix(in oklab, var(--meok) 9%, transparent) 0 1px, transparent 1px 5px),
+    linear-gradient(170deg, #CFC6B6, #8F877A 60%, #5E584F);
+  filter: grayscale(.25);
+  transition: filter .25s ease, transform .25s ease;
+}
+.strip:hover, .strip[aria-pressed="true"] { filter: none; }
+.strip[aria-pressed="true"] { outline: 1.5px solid var(--text); outline-offset: 3px; }
+.strip .cap {
+  position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%);
+  font-family: var(--mono); font-size: .66rem; color: var(--muted); white-space: nowrap; pointer-events: none;
+}
+
+.lane { position: relative; }
+.lane::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--line); }
+.span {
+  position: absolute; top: calc(50% - 3px); height: 6px; border-radius: 3px; background: var(--c); opacity: .9;
+}
+.span span {
+  position: absolute; bottom: calc(100% + 4px); left: 0; white-space: nowrap;
+  font-family: var(--mono); font-size: .68rem; color: var(--text); letter-spacing: .02em;
+}
+.dot {
+  position: absolute; top: 50%; width: 11px; height: 11px; transform: translate(-50%, -50%);
+  border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: var(--c);
+  box-shadow: 0 0 0 3px var(--bg); transition: transform .2s ease;
+}
+.dot.voice { background: var(--bg); box-shadow: 0 0 0 3px var(--bg), inset 0 0 0 2.5px var(--c); width: 13px; height: 13px; }
+.dot:hover, .dot[aria-pressed="true"] { transform: translate(-50%, -50%) scale(1.35); }
+.dot[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--bg), 0 0 0 4.5px var(--c); }
+
+.lane-names {
+  position: absolute; top: 0; bottom: 0; left: 0; z-index: 2; pointer-events: none;
+  display: grid; grid-template-rows: minmax(90px, 20%) minmax(150px, 1fr) repeat(5, minmax(34px, 7.5%)) 28px;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+}
+.lane-names div { display: flex; align-items: center; gap: 8px; }
+.lane-names span {
+  font-family: var(--mono); font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  background: var(--bg); padding: 2px 8px 2px 0;
+}
+.lane-names i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+
+.now { position: absolute; top: 0; bottom: 28px; width: 0; border-left: 1.5px solid var(--now); z-index: 1; pointer-events: none; }
+.now span {
+  position: absolute; bottom: 4px; left: 6px; white-space: nowrap;
+  font-family: var(--mono); font-size: .68rem; color: var(--now); letter-spacing: .06em; text-transform: uppercase;
+}
+.foot { font-family: var(--mono); font-size: .66rem; color: var(--muted); display: flex; align-items: center; gap: 18px; padding-left: 10px; white-space: nowrap; }
+.foot em { font-style: normal; display: inline-flex; align-items: center; gap: 6px; }
+.foot .k { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+.foot .k.r { background: var(--bg); box-shadow: inset 0 0 0 2px var(--faint); }
+.foot .k.s { width: 6px; height: 12px; border-radius: 1px; }
+
+/* Entry card */
+.card {
+  position: absolute; right: max(24px, env(safe-area-inset-right, 0px)); top: 22%; z-index: 3;
+  width: min(320px, calc(100% - 48px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
+  padding: 18px 20px 20px; display: grid; gap: 10px;
+  box-shadow: 0 18px 40px color-mix(in oklab, var(--meok) 16%, transparent);
+}
+.card .meta { display: flex; justify-content: space-between; gap: 10px; padding-right: 22px; font-family: var(--mono); font-size: .68rem; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.card .meta i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c); margin-right: 6px; }
+.card h2 { margin: 0; font-family: var(--display); font-size: 1.4rem; font-weight: 700; line-height: 1.25; text-wrap: balance; }
+.card p { margin: 0; color: var(--muted); line-height: 1.65; }
+.card .photo { height: 150px; border-radius: 2px;
+  background:
+    linear-gradient(to top, color-mix(in oklab, var(--c) 45%, transparent), transparent 70%),
+    repeating-linear-gradient(0deg, color-mix(in oklab, var(--meok) 8%, transparent) 0 1px, transparent 1px 5px),
+    linear-gradient(160deg, #D8D0C1, #918878 55%, #59534A); }
+.wave { display: flex; align-items: center; gap: 2px; height: 38px; }
+.wave span { flex: 1; background: var(--c); border-radius: 1px; }
+.card .close { position: absolute; top: 10px; right: 10px; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 1.1rem; line-height: 1; padding: 4px; }
+
+/* Palette strip */
+.palette {
+  display: flex; gap: 8px; align-items: center; overflow-x: auto;
+  padding-block: 10px;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+  border-top: 1px solid var(--line);
+}
+.palette h3 { margin: 0 8px 0 0; font-family: var(--mono); font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 400; }
+.swatch { display: flex; align-items: center; gap: 8px; flex: none; padding: 3px 10px 3px 3px; border-radius: 999px; border: 1px solid var(--line); }
+.swatch input { width: 26px; height: 26px; border: 0; padding: 0; border-radius: 50%; background: none; cursor: pointer; }
+.swatch input::-webkit-color-swatch-wrapper { padding: 0; }
+.swatch input::-webkit-color-swatch { border: 1px solid var(--line); border-radius: 50%; }
+.swatch input::-moz-color-swatch { border: 1px solid var(--line); border-radius: 50%; }
+.swatch label { display: grid; line-height: 1.15; cursor: pointer; }
+.swatch label span { font-size: .78rem; }
+.swatch label small { font-family: var(--mono); font-size: .62rem; color: var(--muted); }
+.ghost { flex: none; border: 1px solid var(--line); background: none; border-radius: 999px; padding: 6px 14px; cursor: pointer; font-size: .8rem; }
+
+@media (max-width: 700px) {
+  .brand small, .zoom { display: none; }
+  .card { top: auto; bottom: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .dot, .strip { transition: none; } }
+</style>
+
+<header class="bar">
+  <div class="brand">
+    <svg viewBox="0 0 943 943" aria-hidden="true"><path fill="currentColor" transform="translate(32.5 857.0) scale(1 -1)" d="M855 292H742Q801 279 835 233Q869 187 869 123Q869 40 819 -6Q769 -52 692 -51H223Q173 -51 133 -30Q93 -9 69.5 30Q46 69 46 123Q48 174 71.5 212.5Q95 251 134.5 273.5Q174 296 223 296H466Q446 307 417.5 318Q389 329 359 338Q329 347 303 349L328 433Q230 323 62 299L9 533Q56 547 91 562Q126 577 148 609H32V807H476V609H419Q415 592 409.5 575.5Q404 559 397 544Q433 540 463.5 534.5Q494 529 522 518V714H585V822H855ZM585 465H547L485 296H585ZM293 114.2H617Q626 114.2 626 123.2V160.8Q626 169.8 617 169.8H293Q284 169.8 284 160.8V123.2Q284 114.2 293 114.2Z"/></svg>
+    <b>Jeong</b><small>2026 · 13 entries</small>
+  </div>
+  <div class="seg zoom" role="group" aria-label="Zoom level">
+    <button type="button" data-z="0.6">Life</button>
+    <button type="button" data-z="1" aria-pressed="true">Year</button>
+    <button type="button" data-z="3">Month</button>
+    <button type="button" data-z="9">Week</button>
+  </div>
+  <div class="seg mode" role="group" aria-label="Light or dark mode">
+    <button type="button" data-mode="light" aria-label="Light mode" title="Light mode">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path stroke-linecap="round" d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+    </button>
+    <button type="button" data-mode="dark" aria-label="Dark mode" title="Dark mode">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="none" d="M20 14.6A8 8 0 0 1 9.4 4a8 8 0 1 0 10.6 10.6Z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="stage">
+  <div class="scroller" id="scroller"><div class="track" id="track"></div></div>
+  <div class="lane-names" id="laneNames"></div>
+  <article class="card" id="card" aria-live="polite"></article>
+</main>
+
+<footer class="palette" id="palette"><h3>Palette</h3></footer>
+
+<script>
+const YEAR = 2026;
+const day = (m, d) => (Date.UTC(YEAR, m - 1, d) - Date.UTC(YEAR, 0, 1)) / 864e5;
+
+const lanes = [
+  { id: 'home',   name: 'Home',   c: 'var(--ochre)' },
+  { id: 'work',   name: 'Work',   c: 'var(--indigo)' },
+  { id: 'travel', name: 'Travel', c: 'var(--persimmon)' },
+  { id: 'making', name: 'Making', c: 'var(--pine)' },
+  { id: 'people', name: 'People', c: 'var(--celadon)' },
+];
+const laneOf = id => lanes.find(l => l.id === id);
+
+// Sample data. Spans echo notes already in the vault; entries are made up.
+const spans = [
+  { lane: 'work',   from: day(1, 6),   to: day(12, 31), label: 'Go Fig' },
+  { lane: 'home',   from: day(3, 15),  to: day(9, 20),  label: 'Garden season' },
+  { lane: 'travel', from: day(4, 9),   to: day(4, 16),  label: 'Denver' },
+  { lane: 'travel', from: day(5, 1),   to: day(5, 31),  label: 'Tulum' },
+  { lane: 'travel', from: day(10, 18), to: day(10, 21), label: 'Raleigh' },
+  { lane: 'making', from: day(5, 4),   to: day(7, 15),  label: 'Handmade paper' },
+  { lane: 'making', from: day(10, 26), to: day(12, 31), label: 'Jeong' },
+  { lane: 'people', from: day(11, 22), to: day(12, 31), label: 'Holidays with family' },
+];
+
+const entries = [
+  { lane: 'home',   at: day(1, 3),   kind: 'text',  title: 'First page of the year', body: 'Quiet morning, tea going cold. Three things I want this year to hold.' },
+  { lane: 'home',   at: day(3, 22),  kind: 'photo', h: .55, title: 'Seedlings on the sill', body: 'Tomatoes and basil, two weeks in.' },
+  { lane: 'work',   at: day(2, 10),  kind: 'voice', title: 'Long day, good day', body: 'Talked it through on the walk home.', secs: 94 },
+  { lane: 'work',   at: day(8, 6),   kind: 'text',  title: 'Shipped the big one', body: 'Months of work went out today. Celebrated with noodles.' },
+  { lane: 'travel', at: day(4, 12),  kind: 'photo', h: .82, title: 'Mountains at dusk', body: 'The light turned everything orange for ten minutes.' },
+  { lane: 'travel', at: day(5, 9),   kind: 'photo', h: .64, title: 'Cenote swim', body: 'Water so clear it looked like glass.' },
+  { lane: 'travel', at: day(10, 19), kind: 'voice', title: 'All Things Open, day one', body: 'Notes from the talks before I forget them.', secs: 212 },
+  { lane: 'making', at: day(5, 20),  kind: 'photo', h: .95, title: 'Paper from penca de maguey', body: 'Pulled the first sheets from agave fibre. Rough, warm and full of flecks. Dried them on the window in the afternoon sun.' },
+  { lane: 'making', at: day(6, 28),  kind: 'photo', h: .48, title: 'Banana pseudostem batch', body: 'Softer than the maguey. Needs a longer cook.' },
+  { lane: 'making', at: day(10, 26), kind: 'text',  title: 'Named it Jeong', body: 'The bond that builds slowly, like snow.' },
+  { lane: 'people', at: day(2, 14),  kind: 'text',  title: 'Dinner with old friends', body: 'Shared a meal, then an umbrella on the way home.' },
+  { lane: 'people', at: day(7, 4),   kind: 'photo', h: .72, title: 'Fireworks on the porch', body: 'Neighbours brought watermelon.' },
+  { lane: 'people', at: day(9, 9),   kind: 'voice', title: 'Call with Mom', body: 'She told the snowstorm story again.', secs: 145 },
+];
+
+const monthsEn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const TODAY = day(10, 26);
+const fmt = d => { const t = new Date(Date.UTC(YEAR, 0, 1 + d)); return String(t.getUTCDate()).padStart(2, '0') + '.' + String(t.getUTCMonth() + 1).padStart(2, '0'); };
+
+const track = document.getElementById('track');
+const scroller = document.getElementById('scroller');
+const card = document.getElementById('card');
+
+document.getElementById('laneNames').innerHTML = '<div></div><div></div>' +
+  lanes.map(l => `<div style="--c:${l.c}"><span><i style="display:inline-block;margin-right:6px"></i>${l.name}</span></div>`).join('') + '<div></div>';
+document.querySelectorAll('#laneNames i').forEach(i => i.style.cssText += 'width:7px;height:7px;border-radius:50%;background:var(--c)');
+
+let zoom = 1, selected = entries.findIndex(e => e.title.startsWith('Paper from')), x;
+
+function render() {
+  const width = Math.max(scroller.clientWidth * 2.4, 2400) * zoom;
+  x = d => 150 + (d / 365) * (width - 180);
+  track.style.width = width + 'px';
+
+  let numerals = '<div class="numerals">';
+  for (let m = 0; m < 12; m++) {
+    const a = day(m + 1, 1), b = m === 11 ? 365 : day(m + 2, 1);
+    numerals += `<div class="month" style="left:${x(a)}px;width:${x(b) - x(a)}px"><b>${String(m + 1).padStart(2, '0')}</b><small>${monthsEn[m]} · ${m + 1}월</small></div>`;
+  }
+  numerals += '</div>';
+
+  let ticks = '<div class="ticks">';
+  const step = zoom >= 3 ? 1 : 7;
+  for (let d = 0; d < 365; d += step) ticks += `<i style="left:${x(d)}px"></i>`;
+  for (let m = 1; m <= 12; m++) ticks += `<i class="m" style="left:${x(day(m, 1))}px"></i>`;
+  ticks += '</div>';
+
+  const stripW = Math.min(18 * Math.sqrt(zoom) + 10, 90);
+  const strips = entries.map((e, i) => e.kind !== 'photo' ? '' :
+    `<button type="button" class="strip" data-i="${i}" aria-pressed="${i === selected}" aria-label="${e.title}, photo" style="--c:${laneOf(e.lane).c};left:${x(e.at)}px;width:${stripW}px;height:${Math.round(e.h * 82)}%"><span class="cap">${fmt(e.at)}</span></button>`).join('');
+
+  const rows = lanes.map(l => {
+    const sp = spans.filter(s => s.lane === l.id).map(s =>
+      `<div class="span" style="--c:${l.c};left:${x(s.from)}px;width:${Math.max(x(s.to) - x(s.from), 6)}px"><span>${s.label}</span></div>`).join('');
+    const dots = entries.map((e, i) => e.lane !== l.id || e.kind === 'photo' ? '' :
+      `<button type="button" class="dot ${e.kind}" style="--c:${l.c};left:${x(e.at)}px" data-i="${i}" aria-pressed="${i === selected}" aria-label="${e.title}"></button>`).join('');
+    return `<div class="lane">${sp}${dots}</div>`;
+  }).join('');
+
+  track.innerHTML = numerals + `<div class="strips">${strips}${ticks}</div>` + rows +
+    `<div class="foot" style="padding-left:150px"><em><span class="k s"></span>photo</em><em><span class="k"></span>writing</em><em><span class="k r"></span>voice</em><em>Sample entries · drag to move through the year</em></div>` +
+    `<div class="now" style="left:${x(TODAY)}px"><span>Today ${fmt(TODAY)}</span></div>`;
+}
+
+function showCard() {
+  if (selected < 0) { card.hidden = true; return; }
+  card.hidden = false;
+  const e = entries[selected], l = laneOf(e.lane);
+  const t = new Date(Date.UTC(YEAR, 0, 1 + e.at));
+  const date = t.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const len = e.secs ? `${Math.floor(e.secs / 60)}:${String(e.secs % 60).padStart(2, '0')}` : '';
+  let media = '';
+  if (e.kind === 'photo') media = '<div class="photo" role="img" aria-label="Photo placeholder"></div>';
+  if (e.kind === 'voice') {
+    const bars = Array.from({ length: 44 }, (_, i) => 18 + Math.round(78 * Math.abs(Math.sin(i * 1.3) * Math.cos(i * .37))));
+    media = `<div class="wave" aria-label="Voice note, ${len}">${bars.map(h => `<span style="height:${h}%"></span>`).join('')}</div>`;
+  }
+  card.style.setProperty('--c', l.c);
+  card.innerHTML = `<button class="close" type="button" aria-label="Close entry">×</button><div class="meta"><span><i></i>${l.name}</span><span>${date} ${YEAR}${len ? ' · ' + len : ''}</span></div>${media}<h2>${e.title}</h2><p>${e.body}</p>`;
+  card.querySelector('.close').addEventListener('click', () => { selected = -1; keepScroll(render); showCard(); });
+}
+
+function keepScroll(fn) { const r = scroller.scrollLeft / track.scrollWidth; fn(); scroller.scrollLeft = r * track.scrollWidth; }
+
+render(); showCard();
+scroller.scrollLeft = x(day(3, 20)) - 150;
+
+track.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-i]'); if (!b || moved) return;
+  selected = +b.dataset.i; const keep = scroller.scrollLeft; render(); scroller.scrollLeft = keep; showCard();
+});
+
+document.querySelectorAll('.zoom button').forEach(btn => btn.addEventListener('click', () => {
+  const center = (scroller.scrollLeft + scroller.clientWidth / 2) / track.scrollWidth;
+  zoom = +btn.dataset.z;
+  document.querySelectorAll('.zoom button').forEach(b => b.setAttribute('aria-pressed', b === btn));
+  render();
+  scroller.scrollLeft = center * track.scrollWidth - scroller.clientWidth / 2;
+}));
+
+// Drag to pan; the mouse wheel moves through time
+let down = false, startX = 0, startLeft = 0, moved = false;
+scroller.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') return; down = true; moved = false; startX = e.clientX; startLeft = scroller.scrollLeft; });
+addEventListener('pointermove', e => { if (!down) return; const dx = e.clientX - startX; if (Math.abs(dx) > 4) { moved = true; scroller.classList.add('dragging'); } scroller.scrollLeft = startLeft - dx; });
+addEventListener('pointerup', () => { down = false; scroller.classList.remove('dragging'); setTimeout(() => moved = false, 0); });
+scroller.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { scroller.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
+addEventListener('resize', () => keepScroll(render));
+
+// Light and dark mode, top-right corner
+const root = document.documentElement;
+const modeBtns = document.querySelectorAll('.mode button');
+const isDark = () => root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+function syncMode() { const d = isDark(); modeBtns.forEach(b => b.setAttribute('aria-pressed', (b.dataset.mode === 'dark') === d)); }
+modeBtns.forEach(b => b.addEventListener('click', () => { root.dataset.theme = b.dataset.mode; syncMode(); }));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncMode);
+syncMode();
+
+// Palette strip: click any swatch to try a new color
+const palette = [
+  ['hanji', 'Hanji', 'paper'], ['meok', 'Meok', 'ink'], ['persimmon', 'Persimmon', 'travel · today'], ['crimson', 'Crimson', 'accent'],
+  ['ochre', 'Ochre', 'home'], ['pine', 'Pine', 'making'], ['celadon', 'Celadon', 'people'], ['indigo', 'Indigo', 'work'], ['straw', 'Straw', 'bamboo'],
+];
+const pal = document.getElementById('palette');
+const base = getComputedStyle(root);
+palette.forEach(([token, name, role]) => {
+  const val = base.getPropertyValue('--' + token).trim();
+  const el = document.createElement('div');
+  el.className = 'swatch';
+  el.innerHTML = `<input type="color" id="c-${token}" value="${val}"><label for="c-${token}"><span>${name}</span><small id="h-${token}">${val.toUpperCase()} · ${role}</small></label>`;
+  el.querySelector('input').addEventListener('input', ev => {
+    root.style.setProperty('--' + token, ev.target.value);
+    document.getElementById('h-' + token).textContent = `${ev.target.value.toUpperCase()} · ${role}`;
+  });
+  pal.appendChild(el);
+});
+const reset = document.createElement('button');
+reset.className = 'ghost'; reset.type = 'button'; reset.textContent = 'Reset colors';
+reset.addEventListener('click', () => palette.forEach(([token, , role]) => {
+  root.style.removeProperty('--' + token);
+  const v = getComputedStyle(root).getPropertyValue('--' + token).trim();
+  document.getElementById('c-' + token).value = v;
+  document.getElementById('h-' + token).textContent = `${v.toUpperCase()} · ${role}`;
+}));
+pal.appendChild(reset);
+</script>
+
+</html>
