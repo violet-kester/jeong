@@ -1,6 +1,8 @@
 <div align="center">
 
-<h1>💛<br><br>정<br>Jeong</h1>
+<img src="jeong.svg" alt="정" width="160">
+
+<h1>Jeong</h1>
 
 **Your life on a timeline.**
 
