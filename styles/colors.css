@@ -1,0 +1,132 @@
+/* ==========================================================================
+   Jeong color palette
+   ==========================================================================
+
+   The palette comes from obangsaek (오방색), the five traditional Korean
+   colors, softened and warmed so they sit quietly on paper and ink:
+
+     청 cheong  blue-green   east, spring     →  pine, celadon, indigo
+     적 jeok    red          south, summer    →  persimmon, crimson
+     황 hwang   yellow       center, earth    →  ochre, straw
+     백 baek    white        west, autumn     →  hanji (paper)
+     흑 heuk    black        north, winter    →  meok (ink)
+
+   The rule of thumb: mostly paper and ink, with one or two accents at a time.
+
+   This file has three parts:
+
+     1. Palette      The raw colors. Use these only to define the tokens.
+     2. Light mode   What the app uses, on hanji paper. The default.
+     3. Dark mode    The same tokens on meok ink. Follows the system setting,
+                     and can be forced with data-theme="light" or
+                     data-theme="dark" on <html>.
+
+   In components, always use the tokens from parts 2 and 3
+   (--color-*, --lane-*), never the raw palette.
+   ========================================================================== */
+
+
+/* 1. Palette
+   -------------------------------------------------------------------------- */
+
+:root {
+  /* Paper and ink */
+  --hanji:      #F1E8D6;  /* 한지  mulberry paper, unbleached */
+  --meok:       #2A2724;  /* 먹    ink ground from an ink stick */
+  --straw:      #D9C59A;  /* bamboo and straw, from fan frames */
+
+  /* Red */
+  --persimmon:  #B2432F;  /* 감    the red of painted fans and the taegeuk */
+  --crimson:    #8E2A2E;  /* deep red of the cloud motif */
+
+  /* Yellow */
+  --ochre:      #D49A36;  /* 황토  yellow earth */
+
+  /* Blue-green */
+  --pine:       #3F4B43;  /* 소나무 dark pine green */
+  --celadon:    #7F9C8A;  /* 청자  celadon glaze */
+  --indigo:     #34405C;  /* 쪽    indigo dye */
+}
+
+
+/* 2. Light mode: hanji
+   -------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --color-bg:          var(--hanji);
+  --color-surface:     #F7F2E8;   /* cards and panels, a little brighter than paper */
+
+  /* Text and lines */
+  --color-text:        var(--meok);
+  --color-text-muted:  #7E786F;   /* captions, dates, secondary text */
+  --color-text-faint:  #B5AEA1;   /* tick marks, placeholders */
+  --color-line:        rgba(42, 39, 36, 0.16);  /* hairlines and borders */
+
+  /* Accents */
+  --color-now:         var(--persimmon);  /* the "today" line */
+  --color-focus:       var(--ochre);      /* keyboard focus ring */
+
+  /* Timeline lanes */
+  --lane-home:         var(--ochre);
+  --lane-work:         var(--indigo);
+  --lane-travel:       var(--persimmon);
+  --lane-making:       var(--pine);
+  --lane-people:       var(--celadon);
+}
+
+
+/* 3. Dark mode: meok
+   --------------------------------------------------------------------------
+   The same tokens on ink. The deeper colors (pine, indigo, crimson) are
+   lifted so they stay visible on a dark ground.
+
+   The values appear twice: once for the system setting, and once for
+   data-theme="dark". Keep the two blocks identical.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-bg:          #1D1A17;
+    --color-surface:     #27231F;
+
+    --color-text:        #EEE5D3;
+    --color-text-muted:  #A69C8D;
+    --color-text-faint:  #6C6458;
+    --color-line:        rgba(241, 232, 214, 0.13);
+
+    --color-now:         #D0634A;
+    --color-focus:       #E0AE52;
+
+    --lane-home:         #E0AE52;
+    --lane-work:         #7684A8;
+    --lane-travel:       #D0634A;
+    --lane-making:       #7D9283;
+    --lane-people:       #93B09E;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg:          #1D1A17;
+  --color-surface:     #27231F;
+
+  --color-text:        #EEE5D3;
+  --color-text-muted:  #A69C8D;
+  --color-text-faint:  #6C6458;
+  --color-line:        rgba(241, 232, 214, 0.13);
+
+  --color-now:         #D0634A;
+  --color-focus:       #E0AE52;
+
+  --lane-home:         #E0AE52;
+  --lane-work:         #7684A8;
+  --lane-travel:       #D0634A;
+  --lane-making:       #7D9283;
+  --lane-people:       #93B09E;
+}
