@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="jeong.svg" alt="정" width="160">
+<img src="jeong-bagel-fat-one.svg" alt="정" width="160">
 
 <h1>Jeong</h1>
 
