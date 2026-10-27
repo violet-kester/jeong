@@ -217,6 +217,6 @@ button {
 }
 
 /* The theme toggle sits in its own small pill, just after zoom and Today */
-.jeong-timeline-pill + .jeong-timeline-pill + .jeong-timeline-pill {
+.jeong-timeline-pill.jeong-web-theme {
 	margin-left: 0;
 }

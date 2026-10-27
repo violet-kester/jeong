@@ -1054,16 +1054,81 @@ body {
 	margin-left: auto;
 }
 
-/* Year, Month, Week: words in the middle pill; the one shown sits on a soft wash */
-.jeong.jeong-timeline .jeong-timeline-scales button {
-	width: auto;
-	padding: 0 14px;
+/* The period pill: the kind of period (Year, Month, Week, Day) on the left, a hairline, then which one */
+.jeong-timeline-scale {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.jeong.jeong-timeline .jeong-timeline-scale select {
+	height: 34px;
+	padding: 0 30px 0 14px;
+	border: 0;
+	border-radius: 999px;
+	appearance: none;
+	background: transparent;
+	box-shadow: none;
+	color: var(--jeong-ink);
+	font-family: var(--jeong-body);
+	font-size: 0.95em;
+	cursor: pointer;
+	transition: background-color var(--jeong-quick) var(--jeong-ease);
+}
+
+@media (hover: hover) {
+	.jeong.jeong-timeline .jeong-timeline-scale select:hover {
+		background-color: var(--jeong-wash-strong);
+	}
+}
+
+.jeong-timeline-scale-icon {
+	position: absolute;
+	right: 10px;
+	display: flex;
+	pointer-events: none;
 	color: var(--jeong-text-muted);
 }
 
-.jeong.jeong-timeline .jeong-timeline-scales button.is-current {
-	background-color: var(--jeong-wash-strong);
-	color: var(--jeong-ink);
+.jeong-timeline-scale-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.jeong-timeline-pill-divider {
+	width: 1px;
+	height: 20px;
+	margin: 0 4px;
+	background: var(--jeong-hairline);
+}
+
+/* Which one: the name, with the device's own picker lying invisibly over it */
+.jeong-timeline-which {
+	position: relative;
+	display: flex;
+	align-items: center;
+	border-radius: 999px;
+	transition: background-color var(--jeong-quick) var(--jeong-ease);
+}
+
+@media (hover: hover) {
+	.jeong-timeline-which:hover {
+		background-color: var(--jeong-wash-strong);
+	}
+}
+
+.jeong-timeline-picker,
+.jeong.jeong-timeline .jeong-timeline-picker select,
+.jeong.jeong-timeline .jeong-timeline-picker input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	opacity: 0;
+	cursor: pointer;
 }
 
 /* A month or a week's dates are longer than a year */
@@ -1269,15 +1334,14 @@ body {
 	flex-wrap: wrap;
 }
 
-/* Phones: Year, Month, Week get their own row under the bar, full width and easy to tap */
-.is-mobile .jeong-timeline-scales {
-	order: 3;
-	flex-basis: 100%;
-	margin-left: 0;
+/* Phones: the period pill takes the first row, with the name centred; zoom and Today sit under it, on the right */
+.is-mobile .jeong-timeline-period {
+	flex: 1 1 100%;
 }
 
-.is-mobile .jeong.jeong-timeline .jeong-timeline-scales button {
+.is-mobile .jeong-timeline-which {
 	flex: 1;
+	justify-content: center;
 }
 
 .is-mobile .jeong-timeline-year.is-long {

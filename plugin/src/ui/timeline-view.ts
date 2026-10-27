@@ -11,11 +11,11 @@ import { applyInk } from '../paint/ink';
 
 export const TIMELINE_VIEW = 'jeong-timeline';
 
-// A timeline of the journal, a year, a month, or a week at a time, in the style of the printed-chart
-// sketch: huge numerals (months in a year, days in a month or week), entries as small cards standing on
-// one line, and a red line for now. Hover a card for a larger preview; click to open the entry. Drag to
-// move around; pinch, Ctrl + wheel, or the − and + buttons stretch the period out or squeeze it in;
-// click a month's numeral to see that month, or a day's to see its week.
+// A timeline of the journal, a year, a month, a week, or a day at a time, in the style of the printed-chart
+// sketch: huge numerals (months in a year, days in a month or week, hours in a day), entries as small cards
+// standing on one line, and a red line for now. Hover a card for a larger preview; click to open the entry.
+// Drag to move around; pinch, Ctrl + wheel, or the − and + buttons stretch the period out or squeeze it in.
+// A numeral takes you one step closer: a month to that month, a day to its week, a day in a week to that day.
 
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 92;
@@ -29,18 +29,22 @@ const MAX_CARDS_PER_DAY = 8; // more than this on one day fold into "+N"
 const MIN_HEIGHT = 420; // the numerals plus a row of cards above and below the line
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 12;
-/** How wide a day is at least, in month and week views, so cards have room to stand side by side. */
-const DAY_WIDTH: Record<Scale, number> = { year: 0, month: 90, week: CARD_WIDTH + 40 };
+/** How wide a day is at least, in month, week, and day views, so cards have room to stand side by side. */
+const DAY_WIDTH: Record<Scale, number> = { year: 0, month: 90, week: CARD_WIDTH + 40, day: 24 * 110 };
 const PREVIEW_REST_MS = 600; // the pointer rests this long on a card before its preview shows, so passing over doesn't flash it
 
-type Scale = 'year' | 'month' | 'week';
-const SCALES: Scale[] = ['year', 'month', 'week'];
+type Scale = 'year' | 'month' | 'week' | 'day';
+const SCALES: Scale[] = ['year', 'month', 'week', 'day'];
+/** What each view's columns are, and where its numerals take you. */
+const COLUMN: Record<Scale, 'month' | 'day' | 'hour'> = { year: 'month', month: 'day', week: 'day', day: 'hour' };
+const CLOSER: Record<Scale, Scale | null> = { year: 'month', month: 'week', week: 'day', day: null };
 
 export class TimelineView extends ItemView {
 	private scale: Scale = 'year';
 	/** The first day of the year, month, or week shown. */
 	private start = moment().startOf('year');
-	private scaleButtons = new Map<Scale, HTMLElement>();
+	private scalePicker!: HTMLSelectElement;
+	private periodPicker!: HTMLElement;
 	private selected: string | null = null;
 	private scroller!: HTMLElement;
 	private track!: HTMLElement;
@@ -85,17 +89,20 @@ export class TimelineView extends ItemView {
 		setNightSky(root);
 
 		const bar = (this.bar = root.createDiv({ cls: 'jeong-timeline-bar' }));
-		// Soft pills: the period with its arrows; Year, Month, and Week; and zoom with Today
-		const years = bar.createDiv({ cls: 'jeong-timeline-pill' });
-		const earlier = years.createEl('button', { attr: { 'aria-label': t('timeline.earlier') } });
-		this.yearLabel = years.createDiv({ cls: 'jeong-timeline-year' });
-		const later = years.createEl('button', { attr: { 'aria-label': t('timeline.later') } });
-		const scales = bar.createDiv({ cls: 'jeong-timeline-pill jeong-timeline-scales', attr: { role: 'group', 'aria-label': t('timeline.view') } });
-		for (const scale of SCALES) {
-			const button = scales.createEl('button', { text: t(`timeline.${scale}`) });
-			button.addEventListener('click', () => this.setScale(scale));
-			this.scaleButtons.set(scale, button);
-		}
+		// Two soft pills. The first picks what to look at: a kind of period on one side (Year, Month, Week, Day),
+		// and on the other, which one, with arrows, or by tapping it for a picker. The second has zoom and Today.
+		const period = bar.createDiv({ cls: 'jeong-timeline-pill jeong-timeline-period' });
+		const scaleSlot = period.createDiv({ cls: 'jeong-timeline-scale' });
+		this.scalePicker = scaleSlot.createEl('select', { attr: { 'aria-label': t('timeline.view') } });
+		for (const scale of SCALES) this.scalePicker.createEl('option', { text: t(`timeline.${scale}`), attr: { value: scale } });
+		setIcon(scaleSlot.createSpan({ cls: 'jeong-timeline-scale-icon' }), 'chevron-down');
+		this.scalePicker.addEventListener('change', () => this.setScale(this.scalePicker.value as Scale));
+		period.createSpan({ cls: 'jeong-timeline-pill-divider' });
+		const earlier = period.createEl('button', { attr: { 'aria-label': t('timeline.earlier') } });
+		const which = period.createDiv({ cls: 'jeong-timeline-which' });
+		this.yearLabel = which.createDiv({ cls: 'jeong-timeline-year' });
+		this.periodPicker = which.createDiv({ cls: 'jeong-timeline-picker' });
+		const later = period.createEl('button', { attr: { 'aria-label': t('timeline.later') } });
 		const views = bar.createDiv({ cls: 'jeong-timeline-pill' });
 		const zoomOut = views.createEl('button', { attr: { 'aria-label': t('timeline.zoomOut') } });
 		const zoomIn = views.createEl('button', { attr: { 'aria-label': t('timeline.zoomIn') } });
@@ -176,9 +183,14 @@ export class TimelineView extends ItemView {
 		this.contentEl.empty();
 	}
 
-	/** Switches between Year, Month, and Week, keeping the date in the middle of the view (or `at`) in sight. */
+	/**
+	 * Switches between Year, Month, Week, and Day, staying with `at`; otherwise with today, if it's in the
+	 * period shown; otherwise with the date in the middle of the view.
+	 */
 	private setScale(scale: Scale, at?: moment.Moment): void {
-		const middle = at ?? this.dateAt(this.scroller.scrollLeft + this.scroller.clientWidth / 2);
+		const now = moment();
+		const showingToday = !now.isBefore(this.start) && now.isBefore(this.end());
+		const middle = at ?? (showingToday ? now : this.dateAt(this.scroller.scrollLeft + this.scroller.clientWidth / 2));
 		this.scale = scale;
 		this.zoom = 1;
 		this.showPeriod(middle, middle);
@@ -235,9 +247,14 @@ export class TimelineView extends ItemView {
 		return date.diff(this.start, 'days', true);
 	}
 
-	/** Where an entry's day is on the line: the middle of the day. */
+	/**
+	 * Where an entry stands on the line: in a day, at its time; in a week, just inside its day's column so
+	 * its cards stand within it; otherwise, the middle of its day.
+	 */
 	private dayX(entry: EntryInfo): number {
-		return this.x(this.offset(moment(entry.date)) + 0.5);
+		if (this.scale === 'day') return this.x(this.offset(moment(`${entry.date} ${timeOf(entry)}`)));
+		const day = this.offset(moment(entry.date));
+		return this.scale === 'week' ? this.x(day) + STEM_OFFSET + CARD_GAP : this.x(day + 0.5);
 	}
 
 	/** Pixels from the left edge for a number of days into the period. */
@@ -251,12 +268,47 @@ export class TimelineView extends ItemView {
 		return this.start.clone().add(Math.min(this.days() - 1, Math.max(0, Math.floor(days))), 'days');
 	}
 
-	/** The period's name in the bar: 2026, October 2026, or Oct 26 – Nov 1. */
+	/** The period's name in the bar: 2026, October 2026, Oct 25 – 31, or Tuesday, Oct 27. */
 	private periodLabel(): string {
 		if (this.scale === 'year') return this.start.format('YYYY');
 		if (this.scale === 'month') return this.start.format(Platform.isMobile ? 'MMM YYYY' : 'MMMM YYYY');
+		if (this.scale === 'day') return this.start.format(Platform.isMobile ? 'ddd, MMM D' : 'dddd, MMM D');
 		const last = this.end().subtract(1, 'day');
 		return `${this.start.format('MMM D')} – ${last.format(last.month() === this.start.month() ? 'D' : 'MMM D')}`;
+	}
+
+	/**
+	 * Tapping the period's name opens the device's own picker for that kind of period: a list of years, a month
+	 * calendar, or a date calendar (for a week, any day in it). It sits invisibly over the name.
+	 */
+	private buildPeriodPicker(): void {
+		const slot = this.periodPicker;
+		slot.empty();
+		if (this.scale === 'year') {
+			const select = slot.createEl('select', { attr: { 'aria-label': t('timeline.pickYear') } });
+			const now = moment().year();
+			const first = Math.min(this.start.year(), ...listEntries(this.app, this.plugin.settings.journalFolder).map((e) => Number(e.date.slice(0, 4))), now);
+			for (let year = Math.max(this.start.year(), now) + 1; year >= first; year--) select.createEl('option', { text: String(year), attr: { value: String(year) } });
+			select.value = String(this.start.year());
+			select.addEventListener('change', () => this.showPeriod(moment({ year: Number(select.value) })));
+			return;
+		}
+		const month = this.scale === 'month';
+		const input = slot.createEl('input', { type: month ? 'month' : 'date', attr: { 'aria-label': t(month ? 'timeline.pickMonth' : 'timeline.pickDay') } });
+		input.value = this.start.format(month ? 'YYYY-MM' : 'YYYY-MM-DD');
+		// A click on the name opens the calendar (a hidden date field otherwise only opens from its own icon)
+		input.addEventListener('click', () => {
+			try {
+				input.showPicker();
+			} catch {
+				// Older browsers open it themselves
+			}
+		});
+		input.addEventListener('change', () => {
+			if (!input.value) return;
+			const picked = moment(month ? `${input.value}-01` : input.value);
+			this.showPeriod(picked, picked);
+		});
 	}
 
 	private render(): void {
@@ -265,10 +317,8 @@ export class TimelineView extends ItemView {
 		const entries = listEntries(this.app, this.plugin.settings.journalFolder).filter((e) => e.date >= from && e.date < to);
 		this.yearLabel.setText(this.periodLabel());
 		this.yearLabel.toggleClass('is-long', this.scale !== 'year');
-		this.scaleButtons.forEach((button, scale) => {
-			button.toggleClass('is-current', scale === this.scale);
-			button.setAttribute('aria-pressed', String(scale === this.scale));
-		});
+		this.scalePicker.value = this.scale;
+		this.buildPeriodPicker();
 		this.track.empty();
 		const width = this.scale === 'year' ? Math.max(this.scroller.clientWidth * 2.2, 1800) : Math.max(this.scroller.clientWidth, this.days() * DAY_WIDTH[this.scale] + 80);
 		this.track.style.width = `${width * this.zoom}px`;
@@ -279,9 +329,9 @@ export class TimelineView extends ItemView {
 		const stars = this.track.createDiv({ cls: 'jeong-timeline-stars' });
 		for (let i = 0; i < 3; i++) stars.createDiv({ cls: 'jeong-timeline-twinkle' });
 
-		// Columns with huge numerals: the months of a year, or the days of a month or week.
-		// A numeral takes you one step closer: a month to that month, a day to its week.
-		const unit = this.scale === 'year' ? 'month' : 'day';
+		// Columns with huge numerals: the months of a year, the days of a month or week, or the hours of a day.
+		// A numeral takes you one step closer: a month to that month, a day to its week, or a week's day to that day.
+		const unit = COLUMN[this.scale];
 		const today = moment().startOf('day');
 		for (let day = this.start.clone(); day.isBefore(this.end()); day.add(1, unit)) {
 			const left = this.x(this.offset(day));
@@ -291,9 +341,9 @@ export class TimelineView extends ItemView {
 			column.style.width = `${right - left}px`;
 			column.style.setProperty('--jeong-month-width', `${right - left}px`);
 			if (unit === 'day' && day.isSame(today)) column.addClass('is-today');
-			const numeral = column.createEl('b', { text: unit === 'month' ? day.format('MM') : day.format('D') });
-			column.createEl('small', { text: day.format(unit === 'month' ? 'MMMM' : this.scale === 'week' ? 'dddd' : 'ddd') });
-			const closer = this.scale === 'year' ? 'month' : this.scale === 'month' ? 'week' : null;
+			const numeral = column.createEl('b', { text: day.format(unit === 'month' ? 'MM' : unit === 'day' ? 'D' : 'h') });
+			column.createEl('small', { text: day.format(unit === 'month' ? 'MMMM' : unit === 'hour' ? 'A' : this.scale === 'week' ? 'dddd' : 'ddd') });
+			const closer = CLOSER[this.scale];
 			if (closer) {
 				const at = day.clone();
 				numeral.addClass('is-link');

@@ -133,7 +133,7 @@ function addThemeToggle(view: TimelineView, settings: JeongSettings): void {
 		setIcon(button, dark ? 'sun' : 'moon');
 		button.setAttribute('aria-label', dark ? 'Light theme' : 'Dark theme');
 	};
-	const pill = bar.createDiv({ cls: 'jeong-timeline-pill' });
+	const pill = bar.createDiv({ cls: 'jeong-timeline-pill jeong-web-theme' });
 	const button = pill.createEl('button');
 	button.addEventListener('click', () => {
 		const theme = isDark() ? 'light' : 'dark';
