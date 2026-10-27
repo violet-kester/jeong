@@ -143,8 +143,6 @@ export class TimelineView extends ItemView {
 		this.registerEvent(this.app.vault.on('rename', this.refresh));
 		// A card shows its brush moving while its picture is painted
 		this.register(this.plugin.painter.onChange(this.refresh));
-		// The paper behind a painting is the card's color, which changes with the theme
-		this.registerEvent(this.app.workspace.on('css-change', () => this.applyInk()));
 		this.applyInk();
 
 		this.goToToday();

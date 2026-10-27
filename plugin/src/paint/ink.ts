@@ -1,6 +1,7 @@
 // Paintings are made in black ink, which the model does reliably, and shown in one ink color chosen in
-// settings. An SVG filter maps each pixel's lightness from the ink color (dark) to the card's paper (light),
-// so every painting is exactly one color, matches the others, and follows light and dark themes.
+// settings. An SVG filter maps each pixel's lightness from the ink color (dark) to paper (light), so every
+// painting is exactly one color and matches the others. The paper stays light in dark mode too: a painting is
+// a print on paper, like a photo, and mapping it onto the dark card would turn it into a negative.
 // The files stay black; changing the color never needs a repaint.
 
 export type InkName = 'cinnabar' | 'vermilion' | 'crimson' | 'oxblood' | 'black';
@@ -15,6 +16,8 @@ export const INKS: Record<InkName, string> = {
 
 const SVG = 'http://www.w3.org/2000/svg';
 export const INK_FILTER_ID = 'jeong-ink';
+/** Hanji: the light paper paintings are printed on, in both themes. */
+const PAPER = [251, 246, 236];
 
 /** Puts (or updates) the ink filter in `root`, and marks it so paintings inside use it. */
 export function applyInk(root: HTMLElement, ink: InkName): void {
@@ -40,19 +43,14 @@ export function applyInk(root: HTMLElement, ink: InkName): void {
 		}
 	}
 
-	// Paper is the card's own color; on a dark card the ink is lifted a little so it still reads
-	const paper = rgb(getComputedStyle(root).getPropertyValue('--jeong-card').trim()) ?? [251, 246, 236];
-	const dark = paper.reduce((sum, v) => sum + v, 0) / paper.length < 128;
-	const inkRgb = (rgb(color) ?? [178, 67, 47]).map((v) => (dark ? v + (255 - v) * 0.3 : v));
+	const inkRgb = rgb(color) ?? [178, 67, 47];
 	filter.querySelectorAll('feComponentTransfer > *').forEach((func, i) => {
-		func.setAttribute('tableValues', `${((inkRgb[i] ?? 0) / 255).toFixed(3)} ${((paper[i] ?? 255) / 255).toFixed(3)}`);
+		func.setAttribute('tableValues', `${((inkRgb[i] ?? 0) / 255).toFixed(3)} ${((PAPER[i] ?? 255) / 255).toFixed(3)}`);
 	});
 }
 
-/** "#B2432F" or "rgb(178, 67, 47)" → [178, 67, 47]. */
+/** "#B2432F" → [178, 67, 47]. */
 function rgb(value: string): number[] | null {
 	const hex = /^#([0-9a-f]{6})$/i.exec(value)?.[1];
-	if (hex) return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
-	const parts = /rgba?\(([^)]+)\)/.exec(value)?.[1]?.split(',').map((part) => parseFloat(part));
-	return parts && parts.length >= 3 ? parts.slice(0, 3) : null;
+	return hex ? [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)) : null;
 }

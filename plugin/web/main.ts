@@ -128,8 +128,6 @@ function addThemeToggle(view: TimelineView, settings: JeongSettings): void {
 		document.body.toggleClass('jeong-theme-light', theme === 'light');
 		document.body.toggleClass('jeong-theme-dark', theme === 'dark');
 		const dark = isDark();
-		// Paintings sit on the card's paper, which just changed color
-		view.applyInk();
 		setIcon(button, dark ? 'sun' : 'moon');
 		button.setAttribute('aria-label', dark ? 'Light theme' : 'Dark theme');
 	};

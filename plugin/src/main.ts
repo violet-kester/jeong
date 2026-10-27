@@ -133,8 +133,6 @@ export default class JeongPlugin extends Plugin {
 	applyTheme() {
 		document.body.toggleClass('jeong-theme-light', this.settings.theme === 'light');
 		document.body.toggleClass('jeong-theme-dark', this.settings.theme === 'dark');
-		// Paintings sit on the card's paper, which follows the theme
-		this.refreshTimelines();
 	}
 
 	/** Redraws open timelines, e.g. after the ink color changes. */

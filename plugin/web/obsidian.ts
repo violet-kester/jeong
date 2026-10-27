@@ -142,7 +142,7 @@ export function stringifyYaml(value: Record<string, unknown>): string {
 
 /** Phone or computer: a phone's layout with ?phone in the address (or on an actual phone). */
 const phone = new URLSearchParams(location.search).has('phone') || /iPhone|Android/.test(navigator.userAgent);
-export const Platform = { isMobile: phone, isDesktopApp: false, isDesktop: !phone, isIosApp: phone, isAndroidApp: false };
+export const Platform = { isMobile: phone, isDesktopApp: false, isDesktop: !phone, isIosApp: phone, isAndroidApp: false, isWin: /Windows/.test(navigator.userAgent) };
 
 export class Notice {
 	constructor(message: string) {
