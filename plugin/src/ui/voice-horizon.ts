@@ -28,6 +28,8 @@ export class VoiceHorizon {
 		private button: HTMLElement,
 		/** The Open entry button, once it's showing: the waveform ends where it begins. */
 		private openButton: HTMLElement,
+		/** line: a waveform running into the button. rings: just rings around the button (when there are no words to show). */
+		private mode: 'line' | 'rings' = 'line',
 	) {
 		const ctx = canvas.getContext('2d');
 		if (!ctx) throw new Error('Canvas is not available');
@@ -126,6 +128,11 @@ export class VoiceHorizon {
 		const end = open ? (open.left - box.left) / scale + open.width / scale / 2 : cx - ring;
 		const amplitude = Math.min(46, height * 0.32);
 
+		if (this.mode === 'rings') {
+			this.drawRings(cx, cy, radius, ink, hairline);
+			return;
+		}
+
 		if (this.analyser) {
 			this.drawLive(end, cy, amplitude, ink);
 			this.drawRing(cx, cy, ring + 2, 4 + this.level * 2, ink);
@@ -182,6 +189,25 @@ export class VoiceHorizon {
 		}
 		ctx.closePath();
 		ctx.fill();
+	}
+
+	/** Two rings around the button: faint and still while waiting; swelling with your voice while recording. */
+	private drawRings(cx: number, cy: number, radius: number, ink: string, hairline: string): void {
+		const { ctx } = this;
+		if (!this.analyser) {
+			ctx.strokeStyle = hairline;
+			ctx.lineWidth = 1;
+			for (const gap of [16, 44]) {
+				ctx.beginPath();
+				ctx.arc(cx, cy, radius + gap, 0, Math.PI * 2);
+				ctx.stroke();
+			}
+			return;
+		}
+		this.drawRing(cx, cy, radius + RING_GAP + 2 + this.level * 10, 4 + this.level * 2, ink);
+		ctx.globalAlpha = 0.45;
+		this.drawRing(cx, cy, radius + 40 + this.level * 26, 1.5, ink);
+		ctx.globalAlpha = 1;
 	}
 
 	private drawRing(cx: number, cy: number, radius: number, width: number, ink: string): void {

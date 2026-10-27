@@ -24,3 +24,6 @@ data.json
 # Jeong: local build output and personal paths
 build
 local.json
+
+# Jeong in the browser: built files
+web/dist

@@ -1,0 +1,197 @@
+/* What Obsidian provides around a plugin: its colors, buttons, a tab with a header strip, and pop-up
+   windows. Jeong's own styles (styles.css) go on top, exactly as in Obsidian. */
+
+body {
+	--background-primary: #ffffff;
+	--background-secondary: #f6f6f6;
+	--background-modifier-border: #e0e0e0;
+	--background-modifier-hover: rgba(0, 0, 0, 0.06);
+	--background-modifier-form-field: #ffffff;
+	--interactive-normal: #ffffff;
+	--interactive-hover: #f0f0f0;
+	--interactive-accent: #8a5cf5;
+	--text-normal: #222222;
+	--text-muted: #6b6b6b;
+	--text-faint: #999999;
+	--icon-color: #6b6b6b;
+	--font-interface: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+	--font-monospace: ui-monospace, "SF Mono", Consolas, monospace;
+	margin: 0;
+	height: 100vh;
+	height: 100dvh;
+	overflow: hidden;
+	font-family: var(--font-interface);
+	font-size: 16px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+body.theme-dark {
+	--background-primary: #1e1e1e;
+	--background-secondary: #262626;
+	--background-modifier-border: #363636;
+	--background-modifier-hover: rgba(255, 255, 255, 0.06);
+	--background-modifier-form-field: #2a2a2a;
+	--interactive-normal: #2a2a2a;
+	--interactive-hover: #303030;
+	--text-normal: #dadada;
+	--text-muted: #a3a3a3;
+	--text-faint: #666666;
+	--icon-color: #a3a3a3;
+	color-scheme: dark;
+}
+
+button {
+	font: inherit;
+	padding: 6px 14px;
+	border: 0;
+	border-radius: 6px;
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+	cursor: pointer;
+}
+
+.svg-icon {
+	width: 18px;
+	height: 18px;
+}
+
+/* A tab: header strip, then the view */
+.workspace-leaf-content {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.view-header {
+	display: flex;
+	align-items: center;
+	height: 40px;
+	padding: 0 16px;
+	flex: none;
+	font-size: 0.9em;
+}
+
+.view-content {
+	flex: 1;
+	min-height: 0;
+	position: relative;
+}
+
+/* A pop-up window */
+.modal-container {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.modal-bg {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.55);
+}
+
+.modal {
+	position: relative;
+	max-width: 92vw;
+	max-height: 92vh;
+	border-radius: 12px;
+	background: var(--background-primary);
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.modal-close-button {
+	position: absolute;
+	top: 14px;
+	right: 16px;
+	z-index: 3;
+	width: 28px;
+	height: 28px;
+	display: grid;
+	place-items: center;
+	border-radius: 50%;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.modal-close-button::before {
+	content: "✕";
+}
+
+.is-mobile .modal-close-button {
+	width: 44px;
+	height: 44px;
+	background: rgba(128, 128, 128, 0.25);
+}
+
+/* Obsidian's floating toolbar on phones, drawn over everything except pop-ups */
+.mobile-navbar {
+	position: fixed;
+	left: 50%;
+	bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+	z-index: 40;
+	width: min(340px, 86vw);
+	height: 56px;
+	transform: translateX(-50%);
+	border-radius: 999px;
+	background: rgba(70, 72, 96, 0.85);
+	backdrop-filter: blur(10px);
+}
+
+/* The first screen, to choose the vault folder */
+.jeong-web-welcome {
+	height: 100%;
+	display: grid;
+	place-content: center;
+	justify-items: center;
+	gap: 14px;
+	padding: 24px;
+	text-align: center;
+	background: var(--jeong-day-morning);
+	color: var(--jeong-ink);
+}
+
+.jeong-web-mark {
+	font-family: var(--jeong-display);
+	font-size: 72px;
+	line-height: 1;
+	color: var(--jeong-persimmon);
+}
+
+.jeong-web-welcome h1 {
+	margin: 0;
+	font-family: var(--jeong-display);
+	font-size: 2em;
+}
+
+.jeong-web-welcome p {
+	max-width: 46ch;
+	margin: 0;
+	line-height: 1.6;
+	color: var(--jeong-text-muted);
+}
+
+.jeong-web-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 12px;
+	margin-top: 10px;
+}
+
+.jeong-web-actions button {
+	padding: 0 26px;
+}
+
+.jeong .jeong-web-actions button.jeong-web-secondary {
+	height: 38px;
+	border: 1px solid var(--jeong-hairline);
+	border-radius: 999px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--jeong-ink);
+}

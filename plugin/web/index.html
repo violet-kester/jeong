@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<title>Jeong</title>
+		<link rel="stylesheet" href="base.css" />
+		<link rel="stylesheet" href="dist/jeong.css" />
+	</head>
+	<body>
+		<script type="module">
+			// ?demo runs a sample journal kept in the browser; otherwise Jeong opens your vault folder
+			const demo = new URLSearchParams(location.search).has('demo');
+			import(demo ? './dist/demo.js' : './dist/jeong.js');
+		</script>
+	</body>
+</html>

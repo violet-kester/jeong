@@ -1,8 +1,10 @@
-import { ItemView, WorkspaceLeaf, debounce, moment, setIcon } from 'obsidian';
+import { ItemView, Platform, WorkspaceLeaf, debounce, moment, setIcon } from 'obsidian';
 import type JeongPlugin from '../main';
 import { t } from '../i18n';
 import { listEntries, type EntryInfo } from '../journal/entries';
 import { setNightSky } from './night-sky';
+import { arrive, leave } from './motion';
+import { openButtonPill } from './open-button';
 
 export const TIMELINE_VIEW = 'jeong-timeline';
 
@@ -18,10 +20,12 @@ const CARD_GAP = 10;
 const STEM = 18; // the gap between the line and the nearest cards
 const STEM_OFFSET = 14; // how far into the card its stem sits
 const NUMERALS_HEIGHT = 170;
+const PHOTO_TURN_MS = 4500; // how long each photo shows before the next one fades in
 const MAX_CARDS_PER_DAY = 8; // more than this on one day fold into "+N"
 const MIN_HEIGHT = 420; // the numerals plus a row of cards above and below the line
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 12;
+const PREVIEW_REST_MS = 600; // the pointer rests this long on a card before its preview shows, so passing over doesn't flash it
 
 export class TimelineView extends ItemView {
 	private year = new Date().getFullYear();
@@ -31,6 +35,8 @@ export class TimelineView extends ItemView {
 	private preview!: HTMLElement;
 	private showTimer = 0;
 	private hideTimer = 0;
+	private bar!: HTMLElement;
+	private top = 0; // the header and bar float over the top of the timeline; the year is laid out below them
 	private yearLabel!: HTMLElement;
 	private dragging = { active: false, moved: false, x: 0, y: 0, left: 0, top: 0 };
 	private zoom = 1;
@@ -66,16 +72,20 @@ export class TimelineView extends ItemView {
 		this.containerEl.addClass('jeong');
 		setNightSky(root);
 
-		const bar = root.createDiv({ cls: 'jeong-timeline-bar' });
-		const earlier = bar.createEl('button', { text: `‹ ${t('timeline.earlier')}` });
-		this.yearLabel = bar.createDiv({ cls: 'jeong-timeline-year' });
-		const later = bar.createEl('button', { text: `${t('timeline.later')} ›` });
-		const zoom = bar.createDiv({ cls: 'jeong-timeline-zoom' });
-		const zoomOut = zoom.createEl('button', { attr: { 'aria-label': t('timeline.zoomOut') } });
-		const zoomIn = zoom.createEl('button', { attr: { 'aria-label': t('timeline.zoomIn') } });
+		const bar = (this.bar = root.createDiv({ cls: 'jeong-timeline-bar' }));
+		// Two soft pills: the year with its arrows, and zoom with Today
+		const years = bar.createDiv({ cls: 'jeong-timeline-pill' });
+		const earlier = years.createEl('button', { attr: { 'aria-label': t('timeline.earlier') } });
+		this.yearLabel = years.createDiv({ cls: 'jeong-timeline-year' });
+		const later = years.createEl('button', { attr: { 'aria-label': t('timeline.later') } });
+		const views = bar.createDiv({ cls: 'jeong-timeline-pill' });
+		const zoomOut = views.createEl('button', { attr: { 'aria-label': t('timeline.zoomOut') } });
+		const zoomIn = views.createEl('button', { attr: { 'aria-label': t('timeline.zoomIn') } });
+		setIcon(earlier, 'chevron-left');
+		setIcon(later, 'chevron-right');
 		setIcon(zoomOut, 'minus');
 		setIcon(zoomIn, 'plus');
-		const today = bar.createEl('button', { cls: 'jeong-timeline-today', text: t('timeline.today') });
+		const today = views.createEl('button', { cls: 'jeong-timeline-today', text: t('timeline.today') });
 		zoomOut.addEventListener('click', () => this.setZoom(this.zoom / 1.6));
 		zoomIn.addEventListener('click', () => this.setZoom(this.zoom * 1.6));
 		earlier.addEventListener('click', () => this.showYear(this.year - 1));
@@ -98,6 +108,7 @@ export class TimelineView extends ItemView {
 			if (e.pointerType === 'mouse') this.scheduleHide();
 		});
 		this.enablePanning();
+		this.cyclePhotos();
 
 		// Redraw when entries change
 		this.registerEvent(this.app.metadataCache.on('changed', this.refresh));
@@ -142,7 +153,19 @@ export class TimelineView extends ItemView {
 		const target = scrollToToday && year === now.getFullYear() ? this.x(dayOfYear(now)) : 0;
 		this.scroller.scrollLeft = Math.max(0, target - this.scroller.clientWidth / 2);
 		// The line sits a little below the middle, as on a short day, even when busy mornings push it down
-		this.scroller.scrollTop = Math.max(0, this.axisY - this.scroller.clientHeight * 0.56);
+		this.scroller.scrollTop = Math.max(0, this.axisY - this.top - (this.scroller.clientHeight - this.top) * 0.56);
+	}
+
+	/**
+	 * How much of the view's top the floating header and bar cover. The timeline runs up under them (they're
+	 * see-through), and the numerals and cards start below them.
+	 */
+	private measureTop(): void {
+		const header = this.containerEl.querySelector<HTMLElement>('.view-header');
+		const headerHeight = header && getComputedStyle(header).position === 'absolute' ? header.offsetHeight : 0;
+		this.bar.style.top = `${headerHeight}px`;
+		this.top = headerHeight + this.bar.offsetHeight;
+		this.contentEl.style.setProperty('--jeong-timeline-top', `${this.top}px`);
 	}
 
 	/** Zooms the year in or out, keeping the day under `anchor` (pixels from the view's left edge) in place. */
@@ -223,8 +246,9 @@ export class TimelineView extends ItemView {
 		const below = stack(afternoon, (e) => this.dayX(e));
 		const reach = (cards: StackedCard[]) => Math.max(0, ...cards.map((card) => card.offset + card.height));
 
-		const height = Math.max(this.scroller.clientHeight, MIN_HEIGHT);
-		const axisY = Math.max(Math.round(height * 0.56), NUMERALS_HEIGHT + STEM + reach(above));
+		this.measureTop();
+		const height = Math.max(this.scroller.clientHeight, this.top + MIN_HEIGHT);
+		const axisY = Math.max(this.top + Math.round((height - this.top) * 0.56), this.top + NUMERALS_HEIGHT + STEM + reach(above));
 		this.axisY = axisY;
 		axis.style.top = `${axisY}px`;
 		this.track.style.setProperty('--jeong-axis', `${axisY}px`);
@@ -251,8 +275,8 @@ export class TimelineView extends ItemView {
 			more.addEventListener('click', () => this.showList(folded));
 		}
 
-		// Tall enough for the lowest card, with room under it for the Record button
-		this.track.style.height = `${Math.max(height, axisY + STEM + reach(below) + 96)}px`;
+		// Tall enough for the lowest card, with room under it for the Record button (and, on phones, Obsidian's toolbar)
+		this.track.style.height = `${Math.max(height, axisY + STEM + reach(below) + (Platform.isMobile ? 200 : 96))}px`;
 
 		if (!entries.length) {
 			this.track.createDiv({ cls: 'jeong-timeline-empty', text: t('timeline.empty') });
@@ -279,12 +303,23 @@ export class TimelineView extends ItemView {
 		else if (entry.summary) snippet.setText(entry.summary);
 		else void this.excerpt(entry).then((excerpt) => snippet.setText(excerpt));
 		// The main photo, large, under the summary
-		const main = entry.photos[0];
-		if (main) card.createEl('img', { cls: 'jeong-timeline-entry-photo', attr: { src: this.app.vault.getResourcePath(main), alt: '' } });
+		// The photos, large, under the summary; with more than one, they take turns
+		if (entry.photos.length) {
+			const photos = card.createDiv({ cls: 'jeong-timeline-entry-photo' });
+			// Each card turns at a slightly different moment, so they don't all change at once
+			photos.style.setProperty('--jeong-turn-delay', `${(Math.random() * 1.4).toFixed(2)}s`);
+			entry.photos.forEach((photo, i) =>
+				photos.createEl('img', { cls: i === 0 ? 'is-shown' : '', attr: { src: this.app.vault.getResourcePath(photo), alt: '' } }),
+			);
+		}
 
 		// Mouse: hover for a larger preview, click to open. Touch: tap for the preview.
 		card.addEventListener('pointerenter', (e) => {
 			if (e.pointerType === 'mouse') this.hoverPreview(entry);
+		});
+		// Still moving means passing over; the wait starts again until the pointer settles
+		card.addEventListener('pointermove', (e) => {
+			if (e.pointerType === 'mouse' && !this.preview.isShown()) this.hoverPreview(entry);
 		});
 		card.addEventListener('pointerleave', (e) => {
 			if (e.pointerType === 'mouse') this.scheduleHide();
@@ -302,19 +337,19 @@ export class TimelineView extends ItemView {
 	private hoverPreview(entry: EntryInfo): void {
 		window.clearTimeout(this.hideTimer);
 		window.clearTimeout(this.showTimer);
-		this.showTimer = window.setTimeout(() => void this.showPreview(entry), 180);
+		this.showTimer = window.setTimeout(() => void this.showPreview(entry), PREVIEW_REST_MS);
 	}
 
 	private scheduleHide(): void {
 		window.clearTimeout(this.showTimer);
-		this.hideTimer = window.setTimeout(() => this.preview.hide(), 350);
+		this.hideTimer = window.setTimeout(() => void leave(this.preview), 350);
 	}
 
 	/** A short list of entries that didn't fit on the timeline; pick one to preview it. */
 	private showList(entries: EntryInfo[]): void {
 		const card = this.preview;
 		card.empty();
-		card.show();
+		arrive(card);
 		card.createDiv({ cls: 'jeong-timeline-card-meta', text: t('timeline.moreEntries') });
 		for (const entry of entries) {
 			const item = card.createEl('button', { cls: 'jeong-timeline-list-item' });
@@ -336,7 +371,7 @@ export class TimelineView extends ItemView {
 		this.track.querySelector(`[data-path="${CSS.escape(entry.file.path)}"]`)?.addClass('is-selected');
 		const card = this.preview;
 		card.empty();
-		card.show();
+		arrive(card);
 		const meta = [moment(`${entry.date} ${entry.time || '12:00'}`).format(entry.time ? 'LLLL' : 'LL'), entry.duration]
 			.filter(Boolean)
 			.join(' · ');
@@ -353,8 +388,7 @@ export class TimelineView extends ItemView {
 		card.createEl('h2', { text: entry.title });
 		const excerpt = entry.status === 'recorded' ? t('timeline.waiting') : entry.summary || (await this.excerpt(entry));
 		if (excerpt) card.createEl('p', { text: excerpt });
-		const open = card.createEl('button', { cls: 'jeong-button-primary', text: t('record.openEntry') });
-		open.addEventListener('click', () => void this.openEntry(entry));
+		openButtonPill(card, () => void this.openEntry(entry));
 	}
 
 	/** The first couple of sentences of the entry, without frontmatter, labels, links line, or embeds. */
@@ -367,6 +401,21 @@ export class TimelineView extends ItemView {
 			.replace(/^>.*$/gm, '')
 			.trim();
 		return body.length > 280 ? `${body.slice(0, 280).trimEnd()}…` : body;
+	}
+
+	/** Entries with several photos cross-fade to the next one every few seconds (not when motion is reduced). */
+	private cyclePhotos(): void {
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		const turn = window.setInterval(() => {
+			this.track.querySelectorAll('.jeong-timeline-entry-photo').forEach((photos) => {
+				const images = Array.from(photos.children);
+				if (images.length < 2) return;
+				const shown = images.findIndex((image) => image.hasClass('is-shown'));
+				images[shown]?.removeClass('is-shown');
+				images[(shown + 1) % images.length]?.addClass('is-shown');
+			});
+		}, PHOTO_TURN_MS);
+		this.register(() => window.clearInterval(turn));
 	}
 
 	// Drag to move through the year (and up and down a busy stretch); the mouse wheel scrolls sideways

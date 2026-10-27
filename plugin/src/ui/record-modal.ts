@@ -2,11 +2,13 @@ import { App, Modal, Platform, TFile, moment, setIcon } from 'obsidian';
 import { t } from '../i18n';
 import { Recorder, type Recording } from '../audio/recorder';
 import { VoiceHorizon } from './voice-horizon';
+import { arrive, fade, leave } from './motion';
 import { checkWebGpu } from '../diagnostics/webgpu';
 import { deleteTemp, extensionFor, saveToTemp } from '../storage/temp-file';
 import { addRecording, writeEntry } from '../journal/entry-writer';
 import { saveLoosePage } from '../journal/loose-pages';
 import { PhotoTray } from './photo-tray';
+import { openButtonRound } from './open-button';
 import { writeStory } from '../compose/write-story';
 import type { Ollama } from '../compose/ollama';
 import { storyMessage } from './story-messages';
@@ -80,8 +82,17 @@ export class RecordModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass('jeong', 'jeong-record');
+		// The window rises gently into place over a softly dimming background
+		arrive(this.modalEl);
+		const background = this.containerEl.querySelector<HTMLElement>('.modal-bg');
+		if (background) void fade(background, 'in');
 		const { contentEl } = this;
 		const now = moment();
+		// With no live words to show (on a phone), the window is just the button
+		if (this.onPhone) {
+			this.buildVoiceOnly(now);
+			return;
+		}
 
 		// Left: the date, like the top of a letter, and the photos
 		const side = contentEl.createDiv({ cls: 'jeong-entry-side' });
@@ -112,11 +123,7 @@ export class RecordModal extends Modal {
 		this.status = foot.createDiv({ cls: 'jeong-record-status', text: t(this.onPhone ? 'record.readyPhone' : 'record.ready') });
 		const control = foot.createDiv({ cls: 'jeong-entry-control' });
 		// Open entry: shown once the entry is saved
-		this.openAction = control.createDiv({ cls: 'jeong-entry-action is-hidden' });
-		this.openButton = this.openAction.createEl('button', { cls: 'jeong-open-button', attr: { 'aria-label': t('record.openEntry') } });
-		setIcon(this.openButton, 'book-open');
-		this.openAction.createDiv({ cls: 'jeong-entry-action-label', text: t('record.openEntry') });
-		this.openButton.addEventListener('click', () => this.openSaved());
+		({ action: this.openAction, button: this.openButton } = openButtonRound(control, () => this.openSaved()));
 		// Record, stop, and Record more; the time shows under it while recording
 		const recordAction = control.createDiv({ cls: 'jeong-entry-action' });
 		this.button = recordAction.createEl('button', { cls: 'jeong-record-button' });
@@ -139,6 +146,50 @@ export class RecordModal extends Modal {
 		this.startTranscribers();
 	}
 
+	/**
+	 * Just the button: for when there are no live words (on a phone). The date, one big round button with
+	 * rings that swell with your voice, the time, and Add photos and Details waiting quietly at the bottom.
+	 */
+	private buildVoiceOnly(now: moment.Moment): void {
+		this.modalEl.addClass('is-voice-only');
+		const main = this.contentEl.createDiv({ cls: 'jeong-voice' });
+		// Today, so no year: short enough to sit on one line, clear of the close button
+		main.createDiv({ cls: 'jeong-voice-date', text: now.format('ddd, MMM D · LT') });
+
+		const orb = main.createDiv({ cls: 'jeong-voice-orb' });
+		const voice = orb.createEl('canvas', { cls: 'jeong-entry-voice' });
+		const control = orb.createDiv({ cls: 'jeong-entry-control' });
+		({ action: this.openAction, button: this.openButton } = openButtonRound(control, () => this.openSaved()));
+		const recordAction = control.createDiv({ cls: 'jeong-entry-action' });
+		this.button = recordAction.createEl('button', { cls: 'jeong-record-button' });
+		this.timer = recordAction.createDiv({ cls: 'jeong-record-timer', text: '0:00' });
+
+		this.heading = main.createDiv({ cls: 'jeong-entry-heading', text: t('record.tapToStart') });
+		this.status = main.createDiv({ cls: 'jeong-record-status', text: t('record.voiceOnlyHint') });
+		// Not shown here, but recording still keeps its place in them
+		this.transcript = main.createDiv({ cls: 'jeong-transcript is-hidden' });
+		this.take = this.transcript.createSpan({ cls: 'jeong-take' });
+		this.partial = this.take.createSpan({ cls: 'jeong-transcript-partial' });
+		this.comparison = main.createDiv({ cls: 'jeong-comparison is-hidden' });
+
+		const foot = main.createDiv({ cls: 'jeong-voice-foot' });
+		this.photos = new PhotoTray(foot, t('photos.addShort'));
+		const more = foot.createEl('details', { cls: 'jeong-record-more' });
+		const summary = more.createEl('summary');
+		setIcon(summary.createSpan({ cls: 'jeong-voice-pill-icon' }), 'align-left');
+		summary.createSpan({ text: t('record.details') });
+		this.details = more.createDiv({ cls: 'jeong-record-details' });
+
+		this.setButton(false);
+		this.button.addEventListener('click', () => void this.toggle());
+		this.horizon = new VoiceHorizon(voice, this.button, this.openButton, 'rings');
+		window.requestAnimationFrame(() => this.horizon?.draw());
+	}
+
+	private get voiceOnly(): boolean {
+		return this.modalEl.hasClass('is-voice-only');
+	}
+
 	/** The big button: a microphone to start, a square to stop. */
 	private setButton(recording: boolean): void {
 		const more = !recording && this.savedNote !== null;
@@ -154,7 +205,7 @@ export class RecordModal extends Modal {
 			this.heading.removeClass('is-saved');
 			this.heading.setText(t('record.recording.heading'));
 		} else if (!this.savedNote && !this.options.test) {
-			this.heading.setText(t('record.prompt'));
+			this.heading.setText(t(this.voiceOnly ? 'record.tapToStart' : 'record.prompt'));
 		}
 	}
 
@@ -163,6 +214,16 @@ export class RecordModal extends Modal {
 		void this.app.workspace.getLeaf(false).openFile(this.savedNote);
 		this.close();
 	}
+
+	/** Closing: the window settles and fades, and the background lightens, before it goes. */
+	close(): void {
+		if (this.closing) return;
+		this.closing = true;
+		const background = this.containerEl.querySelector<HTMLElement>('.modal-bg');
+		void Promise.all([leave(this.modalEl, () => undefined), background ? fade(background, 'out') : Promise.resolve()]).then(() => super.close());
+	}
+
+	private closing = false;
 
 	private get onPhone(): boolean {
 		return Platform.isMobile;
@@ -258,7 +319,7 @@ export class RecordModal extends Modal {
 			this.take = this.transcript.createSpan({ cls: 'jeong-take' });
 			this.take.appendChild(this.partial);
 		}
-		this.openAction.addClass('is-hidden');
+		void leave(this.openAction);
 		this.horizon?.start(this.recorder.analyser);
 		await this.transcriber?.listen(this.recorder.stream);
 		this.setButton(true);
@@ -471,7 +532,7 @@ export class RecordModal extends Modal {
 		this.heading.addClass('is-saved');
 		this.button.disabled = false;
 		this.setButton(false);
-		this.openAction.removeClass('is-hidden');
+		arrive(this.openAction);
 		window.requestAnimationFrame(() => this.horizon?.draw());
 	}
 
@@ -480,6 +541,7 @@ export class RecordModal extends Modal {
 		if (!this.storyPane) {
 			this.storyPane = this.contentEl.createDiv({ cls: 'jeong-entry-story' });
 			this.modalEl.addClass('has-story');
+			arrive(this.storyPane);
 		}
 		this.storyPane.empty();
 		this.storyPane.createDiv({ cls: 'jeong-entry-story-label', text: t('record.yourStory') });

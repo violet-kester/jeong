@@ -16,7 +16,8 @@ export class PhotoTray {
 	private input: HTMLInputElement;
 	private dragFrom = -1;
 
-	constructor(container: HTMLElement) {
+	/** `label` replaces the button's words, e.g. a shorter "Add photos" where space is tight. */
+	constructor(container: HTMLElement, label = t('photos.add')) {
 		const tray = container.createDiv({ cls: 'jeong-photos' });
 		this.input = tray.createEl('input', { type: 'file', attr: { accept: 'image/*', multiple: '' } });
 		this.input.hide();
@@ -28,7 +29,7 @@ export class PhotoTray {
 		this.strip = tray.createDiv({ cls: 'jeong-photos-strip' });
 		const drop = tray.createEl('button', { cls: 'jeong-photos-drop' });
 		setIcon(drop.createSpan({ cls: 'jeong-photos-icon' }), 'image-plus');
-		drop.createSpan({ text: t('photos.add') });
+		drop.createSpan({ text: label });
 		drop.addEventListener('click', () => this.input.click());
 
 		// Drag and drop from the desktop, a file explorer, or a browser
