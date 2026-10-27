@@ -11,6 +11,10 @@ import type { Segment, SpeechModel, WorkerRequest, WorkerResponse } from './mess
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
+
+// Entries are in English for now (each one records language: en); saying so keeps Whisper from guessing or warning
+const LANGUAGE = 'en';
+
 type Precision = 'fp32' | 'fp16' | 'q8' | 'q4';
 
 const MODELS: Record<SpeechModel, { id: string; gpu: Record<string, Precision>; cpu: Record<string, Precision> }> = {
@@ -33,8 +37,12 @@ function send(message: WorkerResponse): void {
 	self.postMessage(message);
 }
 
-async function load(requested: SpeechModel): Promise<void> {
+async function load(requested: SpeechModel, windows: boolean): Promise<void> {
 	name = requested;
+	// Transformers.js asks for the high-performance graphics card. Chrome can't choose one on Windows (Windows
+	// does, in its graphics settings), so it ignores the request and warns every time; there, don't ask.
+	const webgpu = (env.backends.onnx as { webgpu?: { powerPreference?: string } }).webgpu;
+	if (webgpu && windows) delete webgpu.powerPreference;
 	const model = MODELS[name];
 	const started = performance.now();
 	send({ type: 'stage', stage: 'loading' });
@@ -67,7 +75,7 @@ async function transcribe(id: number, audio: Float32Array, final: boolean, times
 	const isWhisper = name === 'whisper-turbo';
 	// Whisper reads 30-second windows; long recordings are split with a little overlap
 	const output = await transcriber(audio, {
-		...(isWhisper ? { chunk_length_s: 30, stride_length_s: 5 } : {}),
+		...(isWhisper ? { chunk_length_s: 30, stride_length_s: 5, language: LANGUAGE, task: 'transcribe' } : {}),
 		...(isWhisper && timestamps ? { return_timestamps: true } : {}),
 	});
 	const outputs: Output[] = Array.isArray(output) ? output : [output];
@@ -85,6 +93,6 @@ async function transcribe(id: number, audio: Float32Array, final: boolean, times
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
 	const message = event.data;
-	const work = message.type === 'load' ? load(message.model) : transcribe(message.id, message.audio, message.final, message.timestamps ?? false);
+	const work = message.type === 'load' ? load(message.model, message.windows) : transcribe(message.id, message.audio, message.final, message.timestamps ?? false);
 	work.catch((error: unknown) => send({ type: 'error', message: error instanceof Error ? error.message : String(error) }));
 };

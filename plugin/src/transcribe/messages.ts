@@ -5,7 +5,7 @@
 export type SpeechModel = 'moonshine-base' | 'whisper-turbo';
 
 export type WorkerRequest =
-	| { type: 'load'; model: SpeechModel }
+	| { type: 'load'; model: SpeechModel; windows: boolean }
 	| { type: 'transcribe'; id: number; audio: Float32Array; final: boolean; timestamps?: boolean };
 
 /** A stretch of the transcript with its start and end, in seconds from the start of the recording. */

@@ -2,6 +2,7 @@
 // time, in order, so a single loaded copy of a model can be shared by everything that
 // needs it (the live transcript and the final transcript both use the same Whisper).
 
+import { Platform } from 'obsidian';
 import workerCode from './live.worker?worker';
 import type { Segment, SpeechModel, WorkerRequest, WorkerResponse } from './messages';
 
@@ -45,7 +46,7 @@ export class SpeechEngine {
 		this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => this.onMessage(event.data);
 		// Errors the worker can't report itself, such as failing to start at all
 		this.worker.onerror = (event: ErrorEvent) => this.fail(event.message || 'The transcription worker stopped unexpectedly');
-		this.post({ type: 'load', model });
+		this.post({ type: 'load', model, windows: Platform.isWin });
 	}
 
 	/** Queue audio for transcription. Waits for the model to finish loading if it hasn't yet. */

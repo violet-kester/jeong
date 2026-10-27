@@ -105,6 +105,8 @@ export class Painter {
 		try {
 			onProgress('scene');
 			const scene = await this.scene(note);
+			// An 8 GB graphics card can't hold the story model and the painting model at once
+			await this.ollama.unload();
 			onProgress('painting');
 			// Style first: the model pays the most attention to the start of the prompt
 			const composition = COMPOSITIONS[Math.floor(Math.random() * COMPOSITIONS.length)];

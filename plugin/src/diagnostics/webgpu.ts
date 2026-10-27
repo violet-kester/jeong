@@ -1,3 +1,5 @@
+import { Platform } from 'obsidian';
+
 // Checks whether WebGPU is available, and which graphics chip it would use.
 // Moonshine and Whisper run much faster on WebGPU than on the CPU fallback.
 
@@ -22,7 +24,8 @@ export async function checkWebGpu(): Promise<WebGpuStatus> {
 	const gpu = (navigator as Navigator & { gpu?: Gpu }).gpu;
 	if (!gpu) return { available: false };
 	try {
-		const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+		// Chrome ignores (and warns about) a graphics-card preference on Windows, where Windows picks the card
+		const adapter = await gpu.requestAdapter(Platform.isWin ? undefined : { powerPreference: 'high-performance' });
 		if (!adapter) return { available: false };
 		const info = adapter.info ?? {};
 		const name = [info.vendor, info.architecture, info.description].filter(Boolean).join(' · ');

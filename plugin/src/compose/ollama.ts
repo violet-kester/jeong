@@ -56,6 +56,24 @@ export class Ollama {
 		};
 	}
 
+	/**
+	 * Frees the model's memory on the graphics card now, rather than after Ollama's usual few idle minutes, so
+	 * something else (the painting model) has room. Ollama loads it again the next time it's asked.
+	 */
+	async unload(): Promise<void> {
+		try {
+			await requestUrl({
+				url: `${this.url().replace(/\/$/, '')}/api/generate`,
+				method: 'POST',
+				contentType: 'application/json',
+				body: JSON.stringify({ model: this.model(), keep_alive: 0 }),
+				throw: false,
+			});
+		} catch {
+			// Not running, or already unloaded
+		}
+	}
+
 	/** True when Ollama is running and has the model downloaded. */
 	async isReady(): Promise<boolean> {
 		try {

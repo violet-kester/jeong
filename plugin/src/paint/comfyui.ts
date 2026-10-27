@@ -13,6 +13,7 @@ interface HistoryEntry {
 
 const POLL_MS = 1000;
 const TIMEOUT_MS = 10 * 60 * 1000; // the first painting also loads the model, which can take a few minutes
+const REQUEST_MS = 15_000; // one request that never answers (ComfyUI busy or stuck) is given up and asked again
 
 export class ComfyUI {
 	constructor(private url: () => string) {}
@@ -45,8 +46,8 @@ export class ComfyUI {
 		const started = Date.now();
 		while (Date.now() - started < TIMEOUT_MS) {
 			await new Promise((resolve) => window.setTimeout(resolve, POLL_MS));
-			const history = (await requestUrl({ url: this.address(`/history/${id}`) })).json as Record<string, HistoryEntry>;
-			const entry = history[id];
+			const history = await withTimeout(requestUrl({ url: this.address(`/history/${id}`) }), REQUEST_MS).catch(() => null);
+			const entry = (history?.json as Record<string, HistoryEntry> | undefined)?.[id];
 			if (!entry) continue;
 			if (entry.status?.status_str === 'error') throw new Error(`ComfyUI could not paint: ${JSON.stringify(entry.status.messages ?? []).slice(0, 300)}`);
 			const image = Object.values(entry.outputs ?? {}).flatMap((output) => output.images ?? [])[0];
@@ -58,4 +59,12 @@ export class ComfyUI {
 		}
 		throw new Error('ComfyUI took too long');
 	}
+}
+
+/** The promise, or a rejection once `ms` have passed without an answer. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+	return new Promise((resolve, reject) => {
+		const timer = window.setTimeout(() => reject(new Error('No answer')), ms);
+		promise.then(resolve, reject).finally(() => window.clearTimeout(timer));
+	});
 }
