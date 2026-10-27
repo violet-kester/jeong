@@ -1,17 +1,21 @@
 // Live transcript while recording. Listens to the microphone at 16 kHz, splits speech
-// into phrases at natural pauses, and asks the worker for words as you talk:
-// - partial: the phrase so far, re-read every half second (shown in light ink)
-// - final: the whole phrase once you pause (shown in full ink)
+// into phrases at natural pauses, and writes words two ways, like ink drying:
+// - light ink: a quick guess at the phrase so far, from a small fast model (Moonshine)
+// - full ink:  once you pause, an accurate model (Whisper) reads the finished phrase
 
-import workerCode from './live.worker?worker';
-import type { SpeechModel, WorkerRequest, WorkerResponse } from './messages';
+import type { SpeechEngine } from './speech-engine';
 import { normalizeLoudness } from '../audio/loudness';
 
 const SAMPLE_RATE = 16_000;
 const PARTIAL_EVERY_MS = 500;
 const PAUSE_ENDS_PHRASE_MS = 700;
-const LONGEST_PHRASE_MS = 15_000; // Moonshine works best on short stretches
+const LONGEST_PHRASE_MS = 15_000;
 const LEAD_IN_MS = 300; // keep a little audio from just before speech starts
+const SHORTEST_PHRASE_MS = 400; // anything shorter is a cough, a click, or a breath
+
+// Whisper sometimes "hears" these in near-silence. Ignore them when the phrase was short.
+const GHOST_PHRASES = new Set(['mm', 'mhm', 'hmm', 'um', 'uh', 'you', 'bye', 'thank you', 'thanks for watching', 'thank you for watching']);
+const GHOST_MAX_SPEECH_MS = 1_500;
 
 // Captures raw audio from the microphone, 128 samples at a time
 const CAPTURE_WORKLET = `
@@ -26,48 +30,33 @@ registerProcessor('jeong-capture', JeongCapture);
 `;
 
 export interface LiveTranscriptHandlers {
-	onStage(stage: 'loading' | 'warming'): void;
-	onProgress(percent: number): void;
-	onReady(device: string, loadMs: number, model: string, precision: string): void;
 	onPartial(text: string): void;
 	onFinal(text: string): void;
-	/** final is true when a phrase is finished; partial re-reads are counted as work, not as new speech. */
+	/** final is true for finished phrases; quick guesses count as work, not as new speech. */
 	onTiming(ms: number, audioMs: number, final: boolean): void;
-	onError(message: string): void;
 }
 
 export class LiveTranscriber {
-	private worker: Worker;
-	private workerUrl: string;
+	/** Quick guesses skipped because the guessing model was still busy (a sign it can't keep up). */
+	skippedPartials = 0;
+
 	private context: AudioContext | null = null;
 	private worklet: AudioWorkletNode | null = null;
-
-	private ready = false;
-	private busy = false;
-	/** Live updates skipped because the model was still busy (a sign it can't keep up). */
-	skippedPartials = 0;
-	private nextId = 0;
-	private pendingFinals: Float32Array[] = [];
-
 	private phrase: Float32Array[] = [];
+	private phraseNumber = 0;
 	private leadIn: Float32Array[] = [];
 	private speaking = false;
 	private silenceMs = 0;
 	private phraseMs = 0;
 	private lastPartialAt = 0;
 	private noiseFloor = 0.004;
+	private finals: Promise<void> = Promise.resolve();
 
 	constructor(
 		private handlers: LiveTranscriptHandlers,
-		model: SpeechModel,
-	) {
-		this.workerUrl = URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' }));
-		this.worker = new Worker(this.workerUrl, { type: 'module' });
-		this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => this.onMessage(event.data);
-		// Errors the worker can't report itself, such as failing to start at all
-		this.worker.onerror = (event: ErrorEvent) => this.handlers.onError(event.message || 'The transcription worker stopped unexpectedly');
-		this.post({ type: 'load', model });
-	}
+		private guesser: SpeechEngine,
+		private writer: SpeechEngine,
+	) {}
 
 	async listen(stream: MediaStream): Promise<void> {
 		this.context = new AudioContext({ sampleRate: SAMPLE_RATE });
@@ -79,18 +68,13 @@ export class LiveTranscriber {
 		this.context.createMediaStreamSource(stream).connect(this.worklet);
 	}
 
-	/** Stop listening and transcribe whatever was said last. */
-	finish(): void {
+	/** Stop listening, write whatever was said last, and resolve once every phrase is in full ink. */
+	async finish(): Promise<void> {
 		if (this.phrase.length) this.endPhrase();
 		void this.context?.close();
 		this.context = null;
 		this.worklet = null;
-	}
-
-	dispose(): void {
-		this.finish();
-		this.worker.terminate();
-		URL.revokeObjectURL(this.workerUrl);
+		await this.finals;
 	}
 
 	private onAudio(chunk: Float32Array): void {
@@ -121,72 +105,57 @@ export class LiveTranscriber {
 		if (this.silenceMs >= PAUSE_ENDS_PHRASE_MS || this.phraseMs >= LONGEST_PHRASE_MS) {
 			this.endPhrase();
 		} else if (performance.now() - this.lastPartialAt >= PARTIAL_EVERY_MS) {
-			this.requestPartial();
+			this.guess();
 		}
 	}
 
-	private requestPartial(): void {
-		// Skip if the worker is still busy, so it never falls behind; the next one catches up
-		if (!this.ready || this.busy || this.pendingFinals.length) {
-			if (this.ready) this.skippedPartials++;
+	/** Light ink: a quick guess at the phrase so far. Skipped if the guesser is still busy. */
+	private guess(): void {
+		if (this.guesser.busy) {
+			this.skippedPartials++;
 			return;
 		}
 		this.lastPartialAt = performance.now();
-		this.send(normalizeLoudness(join(this.phrase)), false);
+		const phraseNumber = this.phraseNumber;
+		this.guesser
+			.transcribe(normalizeLoudness(join(this.phrase)))
+			.then((result) => {
+				this.handlers.onTiming(result.ms, result.audioMs, false);
+				// Only show it if that phrase is still being spoken
+				if (phraseNumber === this.phraseNumber) this.handlers.onPartial(result.text);
+			})
+			.catch(() => undefined);
 	}
 
+	/** Full ink: the accurate model reads the finished phrase. Phrases are written in order. */
 	private endPhrase(): void {
-		this.pendingFinals.push(normalizeLoudness(join(this.phrase)));
+		const speechMs = this.phraseMs - this.silenceMs;
+		const audio = normalizeLoudness(join(this.phrase));
 		this.phrase = [];
+		this.phraseNumber++;
 		this.speaking = false;
 		this.silenceMs = 0;
 		this.phraseMs = 0;
-		this.drain();
-	}
-
-	private drain(): void {
-		if (!this.ready || this.busy) return;
-		const next = this.pendingFinals.shift();
-		if (next) this.send(next, true);
-	}
-
-	private send(audio: Float32Array, final: boolean): void {
-		this.busy = true;
-		const message: WorkerRequest = { type: 'transcribe', id: this.nextId++, audio, final };
-		this.worker.postMessage(message, [audio.buffer]);
-	}
-
-	private post(message: WorkerRequest): void {
-		this.worker.postMessage(message);
-	}
-
-	private onMessage(message: WorkerResponse): void {
-		switch (message.type) {
-			case 'stage':
-				this.handlers.onStage(message.stage);
-				break;
-			case 'progress':
-				this.handlers.onProgress(message.percent);
-				break;
-			case 'ready':
-				this.ready = true;
-				this.handlers.onReady(message.device, message.loadMs, message.model, message.precision);
-				this.drain();
-				break;
-			case 'result':
-				this.busy = false;
-				this.handlers.onTiming(message.ms, message.audioMs, message.final);
-				if (message.final) this.handlers.onFinal(message.text);
-				else if (!this.pendingFinals.length) this.handlers.onPartial(message.text);
-				this.drain();
-				break;
-			case 'error':
-				this.busy = false;
-				this.handlers.onError(message.message);
-				this.drain();
-				break;
+		if (speechMs < SHORTEST_PHRASE_MS) {
+			this.handlers.onPartial('');
+			return;
 		}
+		const written = this.writer.transcribe(audio);
+		this.finals = this.finals.then(async () => {
+			try {
+				const result = await written;
+				this.handlers.onTiming(result.ms, result.audioMs, true);
+				this.handlers.onFinal(isGhost(result.text, speechMs) ? '' : result.text);
+			} catch {
+				this.handlers.onFinal('');
+			}
+		});
 	}
+}
+
+function isGhost(text: string, speechMs: number): boolean {
+	const normalized = text.toLowerCase().replace(/[^\p{L}\s]/gu, '').trim();
+	return !normalized || (speechMs < GHOST_MAX_SPEECH_MS && GHOST_PHRASES.has(normalized));
 }
 
 function join(chunks: Float32Array[]): Float32Array {

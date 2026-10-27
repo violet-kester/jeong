@@ -9,6 +9,8 @@ export const en = {
 	'test.title': 'Transcription test',
 	'test.intro': 'Press Start, read this out loud at your normal pace, then press Stop. Jeong will score how many words each model got wrong.',
 	'test.wordsWrong': 'Words wrong',
+	'test.live': 'live',
+	'test.final': 'final',
 
 	'perf.title': 'Jeong performance',
 	'perf.empty': 'Nothing measured yet. Record something first.',
@@ -59,9 +61,9 @@ export const en = {
 	'settings.journalFolder.name': 'Journal folder',
 	'settings.journalFolder.desc': 'Where Jeong keeps your entries, inside this vault.',
 	'settings.liveModel.name': 'Live transcript model',
-	'settings.liveModel.desc': 'Which model writes the words you see while you talk. Whisper is more accurate; Moonshine is lighter for slower computers.',
-	'settings.liveModel.whisper': 'Whisper Large v3 Turbo (accurate)',
-	'settings.liveModel.moonshine': 'Moonshine Base (light)',
+	'settings.liveModel.desc': 'How the words you see while you talk are written. Recommended: a quick guess first, then the accurate version each time you pause. Moonshine only is lighter for slower computers.',
+	'settings.liveModel.hybrid': 'Quick guess, then accurate (recommended)',
+	'settings.liveModel.moonshine': 'Moonshine only (light)',
 };
 
 export type StringKey = keyof typeof en;

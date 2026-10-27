@@ -1,17 +1,19 @@
 import { App, PluginSettingTab, Setting, normalizePath } from 'obsidian';
 import type JeongPlugin from './main';
 import { t } from './i18n';
-import type { SpeechModel } from './transcribe/messages';
 
 export interface JeongSettings {
 	journalFolder: string;
-	/** Which model writes the words you see while you talk. */
-	liveModel: SpeechModel;
+	/** How the words you see while you talk are written. */
+	liveMode: LiveMode;
 }
+
+/** hybrid: Moonshine guesses (light ink), Whisper writes each finished phrase (full ink). moonshine: Moonshine only, for slower computers. */
+export type LiveMode = 'hybrid' | 'moonshine';
 
 export const DEFAULT_SETTINGS: JeongSettings = {
 	journalFolder: 'spaces/jeong',
-	liveModel: 'whisper-turbo',
+	liveMode: 'hybrid',
 };
 
 export class JeongSettingTab extends PluginSettingTab {
@@ -44,11 +46,11 @@ export class JeongSettingTab extends PluginSettingTab {
 			.setDesc(t('settings.liveModel.desc'))
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption('whisper-turbo', t('settings.liveModel.whisper'))
-					.addOption('moonshine-base', t('settings.liveModel.moonshine'))
-					.setValue(this.plugin.settings.liveModel)
+					.addOption('hybrid', t('settings.liveModel.hybrid'))
+					.addOption('moonshine', t('settings.liveModel.moonshine'))
+					.setValue(this.plugin.settings.liveMode)
 					.onChange(async (value) => {
-						this.plugin.settings.liveModel = value as SpeechModel;
+						this.plugin.settings.liveMode = value === 'moonshine' ? 'moonshine' : 'hybrid';
 						await this.plugin.saveSettings();
 					}),
 			);

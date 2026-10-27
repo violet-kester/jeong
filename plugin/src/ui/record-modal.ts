@@ -5,14 +5,15 @@ import { Waveform } from './waveform';
 import { checkWebGpu } from '../diagnostics/webgpu';
 import { extensionFor, saveToTemp } from '../storage/temp-file';
 import { LiveTranscriber } from '../transcribe/live-transcriber';
-import { FinalTranscriber } from '../transcribe/final-transcriber';
+import { transcribeRecording } from '../transcribe/final-transcriber';
+import { SpeechEngine, type EngineEvents } from '../transcribe/speech-engine';
 import type { Metrics } from '../metrics/metrics';
 import { TEST_SCRIPT, wordErrorRate } from '../metrics/word-error-rate';
-import type { SpeechModel } from '../transcribe/messages';
+import type { LiveMode } from '../settings';
 
 export interface RecordModalOptions {
-	/** Which model writes the live preview. */
-	liveModel: SpeechModel;
+	/** How the live transcript is written. */
+	liveMode: LiveMode;
 	/** Show the test script and score both transcripts against it. */
 	test?: boolean;
 }
@@ -23,7 +24,8 @@ export class RecordModal extends Modal {
 	private recorder = new Recorder();
 	private waveform: Waveform | null = null;
 	private transcriber: LiveTranscriber | null = null;
-	private finalTranscriber: FinalTranscriber | null = null;
+	private moonshine: SpeechEngine | null = null;
+	private whisper: SpeechEngine | null = null;
 	private timerFrame = 0;
 	private live = { ms: 0, audioMs: 0, phrases: 0, text: [] as string[] };
 	private models = { live: '', final: '' };
@@ -78,60 +80,64 @@ export class RecordModal extends Modal {
 		this.waveform?.stop();
 		window.cancelAnimationFrame(this.timerFrame);
 		this.recorder.release();
-		this.transcriber?.dispose();
-		this.finalTranscriber?.dispose();
+		this.moonshine?.dispose();
+		this.whisper?.dispose();
 		this.contentEl.empty();
 	}
 
-	// Load both models as soon as the panel opens, so they're ready by the time you talk
+	// Load both models as soon as the panel opens, so they're ready by the time you talk.
+	// Moonshine makes quick guesses; one shared Whisper writes each phrase and the final transcript.
 	private startTranscribers(): void {
-		this.transcriber = new LiveTranscriber({
-			onStage: (stage) => this.modelRow.setText(t(stage === 'loading' ? 'check.loading' : 'check.warming')),
-			onProgress: (percent) => this.modelRow.setText(`${t('check.downloading')} ${percent}%`),
-			onReady: (device, loadMs, model, precision) => {
-				this.models.live = model;
-				this.modelRow.setText(`${shortName(model)} · ${device} · ${t('check.readyIn')} ${(loadMs / 1000).toFixed(1)} s`);
-				this.metrics.log({ event: 'model_load', kind: 'live', model, device, precision, loadMs: Math.round(loadMs) });
-			},
-			onPartial: (text) => this.partial.setText(text),
-			onFinal: (text) => {
-				if (text) {
-					this.live.text.push(text);
-					this.transcript.insertBefore(createSpan({ cls: 'jeong-transcript-final', text: `${text} ` }), this.partial);
-				}
-				this.live.phrases++;
-				this.partial.setText('');
-				this.transcript.scrollTop = this.transcript.scrollHeight;
-			},
-			onTiming: (ms, audioMs, final) => {
-				// All the model's work counts, but only finished phrases count as speech heard
-				this.live.ms += ms;
-				if (final) this.live.audioMs += audioMs;
-				const factor = this.live.audioMs / Math.max(1, this.live.ms);
-				this.speedRow.setText(`${factor.toFixed(1)}× ${t('check.fasterThanSpeech')} · ${Math.round(ms)} ms ${t('check.lastPhrase')}`);
-			},
-			onError: (message) => {
-				console.error('Jeong live transcript:', message);
-				this.modelRow.setText(`${t('check.error')}: ${message}`);
-				this.metrics.log({ event: 'error', where: 'live-transcript', message });
-			},
-		}, this.options.liveModel);
+		this.moonshine = new SpeechEngine('moonshine-base', this.engineEvents('live', this.modelRow));
+		this.whisper = new SpeechEngine('whisper-turbo', this.engineEvents('final', this.finalRow));
+		const writer = this.options.liveMode === 'hybrid' ? this.whisper : this.moonshine;
 
-		this.finalTranscriber = new FinalTranscriber({
-			onStage: (stage) => this.finalRow.setText(t(stage === 'loading' ? 'check.loading' : 'check.warming')),
-			onProgress: (percent) => this.finalRow.setText(`${t('check.downloading')} ${percent}%`),
+		this.transcriber = new LiveTranscriber(
+			{
+				onPartial: (text) => this.partial.setText(text),
+				onFinal: (text) => {
+					if (text) {
+						this.live.text.push(text);
+						this.transcript.insertBefore(createSpan({ cls: 'jeong-transcript-final', text: `${text} ` }), this.partial);
+					}
+					this.live.phrases++;
+					this.partial.setText('');
+					this.transcript.scrollTop = this.transcript.scrollHeight;
+				},
+				onTiming: (ms, audioMs, final) => {
+					// All the models' work counts, but only finished phrases count as speech heard
+					this.live.ms += ms;
+					if (final) this.live.audioMs += audioMs;
+					const factor = this.live.audioMs / Math.max(1, this.live.ms);
+					this.speedRow.setText(`${factor.toFixed(1)}× ${t('check.fasterThanSpeech')} · ${Math.round(ms)} ms ${t('check.lastPhrase')}`);
+				},
+			},
+			this.moonshine,
+			writer,
+		);
+	}
+
+	private engineEvents(kind: 'live' | 'final', row: HTMLElement): EngineEvents {
+		return {
+			onStage: (stage) => row.setText(t(stage === 'loading' ? 'check.loading' : 'check.warming')),
+			onProgress: (percent) => row.setText(`${t('check.downloading')} ${percent}%`),
 			onReady: (device, loadMs, model, precision) => {
-				this.models.final = model;
-				this.finalRow.setText(`${shortName(model)} · ${device} · ${t('check.readyIn')} ${(loadMs / 1000).toFixed(1)} s`);
-				this.metrics.log({ event: 'model_load', kind: 'final', model, device, precision, loadMs: Math.round(loadMs) });
+				this.models[kind] = model;
+				row.setText(`${shortName(model)} · ${device} · ${t('check.readyIn')} ${(loadMs / 1000).toFixed(1)} s`);
+				this.metrics.log({ event: 'model_load', kind, model, device, precision, loadMs: Math.round(loadMs) });
 			},
-			onResult: (text, ms, audioMs) => this.showFinal(text, ms, audioMs),
 			onError: (message) => {
-				console.error('Jeong final transcript:', message);
-				this.finalRow.setText(`${t('check.error')}: ${message}`);
-				this.metrics.log({ event: 'error', where: 'final-transcript', message });
+				console.error(`Jeong ${kind} transcript:`, message);
+				row.setText(`${t('check.error')}: ${message}`);
+				this.metrics.log({ event: 'error', where: `${kind}-transcript`, message });
 			},
-		});
+		};
+	}
+
+	/** The name logged for the live transcript, e.g. "moonshine-base-ONNX + whisper-large-v3-turbo". */
+	private get liveLabel(): string {
+		const guesser = shortName(this.models.live);
+		return this.options.liveMode === 'hybrid' ? `${guesser} + ${shortName(this.models.final)}` : guesser;
 	}
 
 	private async toggle(): Promise<void> {
@@ -164,16 +170,21 @@ export class RecordModal extends Modal {
 	private async stop(): Promise<void> {
 		this.waveform?.stop();
 		window.cancelAnimationFrame(this.timerFrame);
-		this.transcriber?.finish();
+		const liveDone = this.transcriber?.finish() ?? Promise.resolve();
 		const recording = await this.recorder.stop();
 		this.button.setText(t('record.start'));
 		this.status.setText(t('record.saving'));
 		this.comparison.setText(t('compare.reading'));
-		void this.finalTranscriber?.transcribe(recording.blob).catch((error: unknown) => {
-			const message = error instanceof Error ? error.message : String(error);
-			this.comparison.setText(`${t('check.error')}: ${message}`);
-			this.metrics.log({ event: 'error', where: 'decode', message });
-		});
+		// Whisper finishes the live phrases first (same queue), then reads the whole recording
+		if (this.whisper) {
+			transcribeRecording(this.whisper, recording.blob)
+				.then((result) => this.showFinal(result.text, result.ms, result.audioMs))
+				.catch((error: unknown) => {
+					const message = error instanceof Error ? error.message : String(error);
+					this.comparison.setText(`${t('check.error')}: ${message}`);
+					this.metrics.log({ event: 'error', where: 'final-transcript', message });
+				});
+		}
 
 		this.metrics.log({
 			event: 'recording',
@@ -182,11 +193,12 @@ export class RecordModal extends Modal {
 			kbps: Math.round((recording.blob.size * 8) / Math.max(1, recording.durationMs)),
 			mimeType: recording.mimeType,
 		});
+		await liveDone;
 		if (this.live.audioMs) {
 			this.metrics.log({
 				event: 'transcribe',
 				kind: 'live',
-				model: this.models.live,
+				model: this.liveLabel,
 				audioMs: Math.round(this.live.audioMs),
 				ms: Math.round(this.live.ms),
 				speed: round(this.live.audioMs / Math.max(1, this.live.ms)),
@@ -194,8 +206,6 @@ export class RecordModal extends Modal {
 				skippedPartials: this.transcriber?.skippedPartials ?? 0,
 			});
 		}
-		// The live transcript keeps settling for a moment after Stop; score it once Whisper is done
-
 		this.addDetail(t('check.format'), recording.mimeType || t('check.unknown'));
 		const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 		const sizeKb = Math.round(recording.blob.size / 1024);
@@ -232,11 +242,11 @@ export class RecordModal extends Modal {
 		const liveWer = wordErrorRate(TEST_SCRIPT, liveText);
 		const finalWer = wordErrorRate(TEST_SCRIPT, text);
 		const referenceWords = TEST_SCRIPT.split(/\s+/).length;
-		this.metrics.log({ event: 'quality', kind: 'live', model: this.models.live, wer: round(liveWer), referenceWords });
+		this.metrics.log({ event: 'quality', kind: 'live', model: this.liveLabel, wer: round(liveWer), referenceWords });
 		this.metrics.log({ event: 'quality', kind: 'final', model: this.models.final, wer: round(finalWer), referenceWords });
 		this.comparison.createDiv({
 			cls: 'jeong-comparison-score',
-			text: `${t('test.wordsWrong')}: ${shortName(this.models.live)} ${percent(liveWer)} · ${shortName(this.models.final)} ${percent(finalWer)}`,
+			text: `${t('test.wordsWrong')}: ${t('test.live')} ${percent(liveWer)} · ${t('test.final')} ${percent(finalWer)}`,
 		});
 	}
 

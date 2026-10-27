@@ -28,7 +28,7 @@ export default class JeongPlugin extends Plugin {
 		this.addCommand({
 			id: 'transcription-test',
 			name: t('command.transcriptionTest'),
-			callback: () => new RecordModal(this.app, this.metrics, { test: true, liveModel: this.settings.liveModel }).open(),
+			callback: () => new RecordModal(this.app, this.metrics, { test: true, liveMode: this.settings.liveMode }).open(),
 		});
 
 		this.addCommand({
@@ -41,11 +41,13 @@ export default class JeongPlugin extends Plugin {
 	}
 
 	openRecorder() {
-		new RecordModal(this.app, this.metrics, { liveModel: this.settings.liveModel }).open();
+		new RecordModal(this.app, this.metrics, { liveMode: this.settings.liveMode }).open();
 	}
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<JeongSettings>);
+		// Older versions saved a model name here; anything unknown falls back to the default
+		if (this.settings.liveMode !== 'moonshine') this.settings.liveMode = 'hybrid';
 	}
 
 	async saveSettings() {

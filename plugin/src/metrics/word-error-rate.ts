@@ -36,4 +36,4 @@ export const TEST_SCRIPT =
 	'This is a transcription test. I am sitting at my desk drinking a Diet Coke. ' +
 	'This morning I had coffee, answered a few emails, ' +
 	'and went for a walk around the block. It was colder than I expected. My friend Hannah called, ' +
-	'and we talked about her new apartment in Asheville. That is the end of the test.';
+	'and we talked about her new apartment in Asheville. This is the end of the test.';
