@@ -3,6 +3,12 @@
    scoped to .jeong so Obsidian themes don't change them. */
 
 .jeong {
+	/* The "printed chart" type family, bundled with the plugin (see esbuild.config.mjs) */
+	--jeong-numerals: "Jeong Hahmlet", Georgia, serif;
+	--jeong-display: "Jeong Gowun Batang", Georgia, serif;
+	--jeong-body: "Jeong Gowun Dodum", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+	--jeong-mono: "IBM Plex Mono", Consolas, monospace;
+
 	--jeong-hanji: #F1E8D6;
 	--jeong-meok: #2A2724;
 	--jeong-persimmon: #B2432F;
@@ -17,6 +23,7 @@
 
 /* Live transcript: light ink while words are still settling, full ink once confirmed */
 .jeong-transcript {
+	font-family: var(--jeong-body);
 	width: 100%;
 	min-height: 4.5em;
 	max-height: 12em;
@@ -62,6 +69,7 @@
 }
 
 .jeong-comparison-text {
+	font-family: var(--jeong-body);
 	font-size: 1.15em;
 	line-height: 1.6;
 	padding-left: 12px;
@@ -116,7 +124,9 @@
 }
 
 .jeong-record-timer {
-	font-size: 2.6em;
+	font-family: var(--jeong-numerals);
+	font-weight: 200;
+	font-size: 3.2em;
 	font-variant-numeric: tabular-nums;
 	letter-spacing: 0.02em;
 	line-height: 1;
@@ -176,7 +186,9 @@
 }
 
 .jeong-timeline-year {
-	font-size: 1.4em;
+	font-family: var(--jeong-numerals);
+	font-weight: 200;
+	font-size: 1.8em;
 	font-variant-numeric: tabular-nums;
 	min-width: 4ch;
 	text-align: center;
@@ -209,7 +221,7 @@
 
 .jeong-timeline-month b {
 	display: block;
-	font-family: "Hahmlet", "Gowun Batang", Georgia, serif;
+	font-family: var(--jeong-numerals);
 	font-weight: 200;
 	font-size: clamp(56px, 12vh, 140px);
 	line-height: 0.85;
@@ -218,7 +230,7 @@
 }
 
 .jeong-timeline-month small {
-	font-family: var(--font-monospace);
+	font-family: var(--jeong-mono);
 	font-size: 0.75em;
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
@@ -247,7 +259,7 @@
 	bottom: 10px;
 	left: 6px;
 	white-space: nowrap;
-	font-family: var(--font-monospace);
+	font-family: var(--jeong-mono);
 	font-size: 0.75em;
 	text-transform: uppercase;
 	color: var(--jeong-persimmon);
@@ -301,17 +313,21 @@
 
 .jeong-timeline-card h2 {
 	margin: 0;
-	font-size: 1.3em;
+	font-family: var(--jeong-display);
+	font-weight: 700;
+	font-size: 1.4em;
+	line-height: 1.25;
 }
 
 .jeong-timeline-card p {
 	margin: 0;
+	font-family: var(--jeong-body);
 	line-height: 1.6;
 	color: var(--jeong-text-muted);
 }
 
 .jeong-timeline-card-meta {
-	font-family: var(--font-monospace);
+	font-family: var(--jeong-mono);
 	font-size: 0.75em;
 	color: var(--jeong-text-muted);
 }

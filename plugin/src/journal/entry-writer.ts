@@ -59,6 +59,8 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 			title,
 			date: day,
 			time: when.format('HH:mm'),
+			// Where the entry was recorded, so times stay right after travel or a move
+			timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 			duration,
 			summary: '',
 			language: entry.language,

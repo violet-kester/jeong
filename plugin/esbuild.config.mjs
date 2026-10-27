@@ -18,14 +18,33 @@ const local = fs.existsSync('local.json') ? JSON.parse(fs.readFileSync('local.js
 const outDir = local.pluginDir || 'build';
 fs.mkdirSync(outDir, { recursive: true });
 
-// Copy the manifest and styles next to main.js, and mark the folder for the Hot Reload plugin
+// Fonts are bundled into styles.css so they work offline (all SIL Open Font License; see assets/fonts).
+// Hahmlet and Gowun are subset to Latin + Korean; IBM Plex Mono ships unmodified (its name is reserved).
+const FONTS = [
+	{ family: 'Jeong Hahmlet', file: 'Hahmlet-Latin.woff2', weight: '100 900' },
+	{ family: 'Jeong Gowun Batang', file: 'GowunBatang-Regular.woff2', weight: '400' },
+	{ family: 'Jeong Gowun Batang', file: 'GowunBatang-Bold.woff2', weight: '700' },
+	{ family: 'Jeong Gowun Dodum', file: 'GowunDodum-Regular.woff2', weight: '400' },
+	{ family: 'IBM Plex Mono', file: 'IBMPlexMono-Regular.ttf', weight: '400' },
+	{ family: 'IBM Plex Mono', file: 'IBMPlexMono-Medium.ttf', weight: '500' },
+];
+
+function fontFaces() {
+	return FONTS.map(({ family, file, weight }) => {
+		const data = fs.readFileSync(path.join('assets/fonts', file)).toString('base64');
+		const format = file.endsWith('.woff2') ? 'woff2' : 'truetype';
+		const mime = file.endsWith('.woff2') ? 'font/woff2' : 'font/ttf';
+		return `@font-face { font-family: "${family}"; font-weight: ${weight}; font-style: normal; font-display: swap; src: url(data:${mime};base64,${data}) format("${format}"); }`;
+	}).join('\n');
+}
+
+// Copy the manifest and styles (with fonts) next to main.js, and mark the folder for the Hot Reload plugin
 const copyStatic = {
 	name: 'copy-static',
 	setup(build) {
 		build.onEnd(() => {
-			for (const file of ['manifest.json', 'styles.css']) {
-				fs.copyFileSync(file, path.join(outDir, file));
-			}
+			fs.copyFileSync('manifest.json', path.join(outDir, 'manifest.json'));
+			fs.writeFileSync(path.join(outDir, 'styles.css'), `${fontFaces()}\n\n${fs.readFileSync('styles.css', 'utf8')}`);
 			if (!prod) fs.writeFileSync(path.join(outDir, '.hotreload'), '');
 		});
 	},
