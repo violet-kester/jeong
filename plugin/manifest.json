@@ -1,0 +1,10 @@
+{
+	"id": "jeong",
+	"name": "Jeong",
+	"version": "0.1.0",
+	"minAppVersion": "1.5.0",
+	"description": "Your life on a timeline. Record your thoughts and Jeong turns them into stories, all on your own computer.",
+	"author": "Violet Kester",
+	"authorUrl": "https://github.com/violet-kester",
+	"isDesktopOnly": false
+}

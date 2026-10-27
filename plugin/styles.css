@@ -1,0 +1,20 @@
+/* Jeong (정) plugin styles.
+   Colors come from the hanji (한지, paper) and meok (먹, ink) palette in ../styles/colors.css,
+   scoped to .jeong so Obsidian themes don't change them. */
+
+.jeong {
+	--jeong-hanji: #F1E8D6;
+	--jeong-meok: #2A2724;
+	--jeong-persimmon: #B2432F;
+	--jeong-text-muted: #7E786F;
+}
+
+.theme-dark .jeong {
+	--jeong-text-muted: #A69C8D;
+}
+
+.jeong-record-placeholder {
+	font-size: 1.15em;
+	line-height: 1.6;
+	color: var(--jeong-text-muted);
+}

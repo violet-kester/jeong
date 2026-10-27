@@ -1,15 +1,15 @@
 /* ==========================================================================
-   Jeong color palette
+   Jeong (정) color palette
    ==========================================================================
 
    The palette comes from obangsaek (오방색), the five traditional Korean
    colors, softened and warmed so they sit quietly on paper and ink:
 
-     청 cheong  blue-green   east, spring     →  pine, celadon, indigo
-     적 jeok    red          south, summer    →  persimmon, crimson
-     황 hwang   yellow       center, earth    →  ochre, straw
-     백 baek    white        west, autumn     →  hanji (paper)
-     흑 heuk    black        north, winter    →  meok (ink)
+     cheong (청)  blue-green   east, spring     →  pine, celadon, indigo
+     jeok (적)    red          south, summer    →  persimmon, crimson
+     hwang (황)   yellow       center, earth    →  ochre, straw
+     baek (백)    white        west, autumn     →  hanji (한지), paper
+     heuk (흑)    black        north, winter    →  meok (먹), ink
 
    The rule of thumb: mostly paper and ink, with one or two accents at a time.
 
@@ -31,21 +31,21 @@
 
 :root {
   /* Paper and ink */
-  --hanji:      #F1E8D6;  /* 한지  mulberry paper, unbleached */
-  --meok:       #2A2724;  /* 먹    ink ground from an ink stick */
+  --hanji:      #F1E8D6;  /* hanji: mulberry paper, unbleached */
+  --meok:       #2A2724;  /* meok: ink ground from an ink stick */
   --straw:      #D9C59A;  /* bamboo and straw, from fan frames */
 
   /* Red */
-  --persimmon:  #B2432F;  /* 감    the red of painted fans and the taegeuk */
+  --persimmon:  #B2432F;  /* gam (감), persimmon: the red of painted fans and the taegeuk (태극) */
   --crimson:    #8E2A2E;  /* deep red of the cloud motif */
 
   /* Yellow */
-  --ochre:      #D49A36;  /* 황토  yellow earth */
+  --ochre:      #D49A36;  /* hwangto (황토): yellow earth */
 
   /* Blue-green */
-  --pine:       #3F4B43;  /* 소나무 dark pine green */
-  --celadon:    #7F9C8A;  /* 청자  celadon glaze */
-  --indigo:     #34405C;  /* 쪽    indigo dye */
+  --pine:       #3F4B43;  /* sonamu (소나무): dark pine green */
+  --celadon:    #7F9C8A;  /* cheongja (청자): celadon glaze */
+  --indigo:     #34405C;  /* jjok (쪽): indigo dye */
 }
 
 
