@@ -3,6 +3,27 @@
 export const en = {
 	'ribbon.record': 'Record a new entry',
 	'command.newEntry': 'Record a new entry',
+	'command.transcriptionTest': 'Transcription test',
+	'command.showPerformance': 'Show performance',
+
+	'test.title': 'Transcription test',
+	'test.intro': 'Press Start, read this out loud at your normal pace, then press Stop. Jeong will score how many words each model got wrong.',
+	'test.wordsWrong': 'Words wrong',
+
+	'perf.title': 'Jeong performance',
+	'perf.empty': 'Nothing measured yet. Record something first.',
+	'perf.model': 'Model',
+	'perf.use': 'Used for',
+	'perf.load': 'Load time',
+	'perf.speed': 'Speed',
+	'perf.wordsWrong': 'Words wrong',
+	'perf.live': 'Live preview',
+	'perf.final': 'Final transcript',
+	'perf.recordings': 'recordings',
+	'perf.minutes': 'minutes of audio',
+	'perf.errors': 'errors',
+	'perf.since': 'since',
+	'perf.where': 'Saved on this computer only, in',
 
 	'record.title': 'New entry',
 	'record.ready': 'Press the button and start talking.',
@@ -37,6 +58,10 @@ export const en = {
 
 	'settings.journalFolder.name': 'Journal folder',
 	'settings.journalFolder.desc': 'Where Jeong keeps your entries, inside this vault.',
+	'settings.liveModel.name': 'Live transcript model',
+	'settings.liveModel.desc': 'Which model writes the words you see while you talk. Whisper is more accurate; Moonshine is lighter for slower computers.',
+	'settings.liveModel.whisper': 'Whisper Large v3 Turbo (accurate)',
+	'settings.liveModel.moonshine': 'Moonshine Base (light)',
 };
 
 export type StringKey = keyof typeof en;

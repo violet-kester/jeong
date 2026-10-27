@@ -1,15 +1,16 @@
 // Messages passed between the plugin and a transcription worker.
-// The same worker runs either model: Moonshine for the live preview, Whisper for the final transcript.
+// The same worker can run any of the speech models below.
 
-export type ModelKind = 'live' | 'final';
+/** Moonshine Base is small and fast; Whisper Large v3 Turbo is larger and much more accurate. */
+export type SpeechModel = 'moonshine-base' | 'whisper-turbo';
 
 export type WorkerRequest =
-	| { type: 'load'; kind: ModelKind }
+	| { type: 'load'; model: SpeechModel }
 	| { type: 'transcribe'; id: number; audio: Float32Array; final: boolean };
 
 export type WorkerResponse =
 	| { type: 'stage'; stage: 'loading' | 'warming' }
 	| { type: 'progress'; file: string; percent: number }
-	| { type: 'ready'; device: string; loadMs: number }
+	| { type: 'ready'; device: string; loadMs: number; model: string; precision: string }
 	| { type: 'result'; id: number; text: string; final: boolean; ms: number; audioMs: number }
 	| { type: 'error'; message: string };

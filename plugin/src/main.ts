@@ -1,6 +1,8 @@
 import { Plugin } from 'obsidian';
 import { DEFAULT_SETTINGS, JeongSettings, JeongSettingTab } from './settings';
 import { RecordModal } from './ui/record-modal';
+import { PerformanceModal } from './ui/performance-modal';
+import { Metrics } from './metrics/metrics';
 import { t } from './i18n';
 
 /**
@@ -9,9 +11,11 @@ import { t } from './i18n';
  */
 export default class JeongPlugin extends Plugin {
 	settings!: JeongSettings;
+	metrics!: Metrics;
 
 	async onload() {
 		await this.loadSettings();
+		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, this.manifest.version);
 
 		this.addRibbonIcon('mic', t('ribbon.record'), () => this.openRecorder());
 
@@ -21,11 +25,23 @@ export default class JeongPlugin extends Plugin {
 			callback: () => this.openRecorder(),
 		});
 
+		this.addCommand({
+			id: 'transcription-test',
+			name: t('command.transcriptionTest'),
+			callback: () => new RecordModal(this.app, this.metrics, { test: true, liveModel: this.settings.liveModel }).open(),
+		});
+
+		this.addCommand({
+			id: 'show-performance',
+			name: t('command.showPerformance'),
+			callback: () => new PerformanceModal(this.app, this.metrics).open(),
+		});
+
 		this.addSettingTab(new JeongSettingTab(this.app, this));
 	}
 
 	openRecorder() {
-		new RecordModal(this.app).open();
+		new RecordModal(this.app, this.metrics, { liveModel: this.settings.liveModel }).open();
 	}
 
 	async loadSettings() {

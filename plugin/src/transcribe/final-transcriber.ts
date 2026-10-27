@@ -3,13 +3,14 @@
 
 import workerCode from './live.worker?worker';
 import type { WorkerRequest, WorkerResponse } from './messages';
+import { normalizeLoudness } from '../audio/loudness';
 
 const SAMPLE_RATE = 16_000;
 
 export interface FinalTranscriptHandlers {
 	onStage(stage: 'loading' | 'warming'): void;
 	onProgress(percent: number): void;
-	onReady(device: string, loadMs: number): void;
+	onReady(device: string, loadMs: number, model: string, precision: string): void;
 	onResult(text: string, ms: number, audioMs: number): void;
 	onError(message: string): void;
 }
@@ -25,7 +26,7 @@ export class FinalTranscriber {
 		this.worker = new Worker(this.workerUrl, { type: 'module' });
 		this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => this.onMessage(event.data);
 		this.worker.onerror = (event: ErrorEvent) => this.handlers.onError(event.message || 'The transcription worker stopped unexpectedly');
-		this.post({ type: 'load', kind: 'final' });
+		this.post({ type: 'load', model: 'whisper-turbo' });
 	}
 
 	/** Transcribe a finished recording. If the model is still loading, it starts as soon as it's ready. */
@@ -59,7 +60,7 @@ export class FinalTranscriber {
 				break;
 			case 'ready':
 				this.ready = true;
-				this.handlers.onReady(message.device, message.loadMs);
+				this.handlers.onReady(message.device, message.loadMs, message.model, message.precision);
 				if (this.waiting) {
 					this.send(this.waiting);
 					this.waiting = null;
@@ -80,7 +81,7 @@ async function decodeTo16kHz(recording: Blob): Promise<Float32Array> {
 	const context = new AudioContext({ sampleRate: SAMPLE_RATE });
 	try {
 		const buffer = await context.decodeAudioData(await recording.arrayBuffer());
-		return buffer.getChannelData(0).slice();
+		return normalizeLoudness(buffer.getChannelData(0).slice());
 	} finally {
 		void context.close();
 	}

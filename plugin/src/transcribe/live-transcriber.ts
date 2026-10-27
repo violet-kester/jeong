@@ -4,7 +4,8 @@
 // - final: the whole phrase once you pause (shown in full ink)
 
 import workerCode from './live.worker?worker';
-import type { WorkerRequest, WorkerResponse } from './messages';
+import type { SpeechModel, WorkerRequest, WorkerResponse } from './messages';
+import { normalizeLoudness } from '../audio/loudness';
 
 const SAMPLE_RATE = 16_000;
 const PARTIAL_EVERY_MS = 500;
@@ -27,10 +28,11 @@ registerProcessor('jeong-capture', JeongCapture);
 export interface LiveTranscriptHandlers {
 	onStage(stage: 'loading' | 'warming'): void;
 	onProgress(percent: number): void;
-	onReady(device: string, loadMs: number): void;
+	onReady(device: string, loadMs: number, model: string, precision: string): void;
 	onPartial(text: string): void;
 	onFinal(text: string): void;
-	onTiming(ms: number, audioMs: number): void;
+	/** final is true when a phrase is finished; partial re-reads are counted as work, not as new speech. */
+	onTiming(ms: number, audioMs: number, final: boolean): void;
 	onError(message: string): void;
 }
 
@@ -42,6 +44,8 @@ export class LiveTranscriber {
 
 	private ready = false;
 	private busy = false;
+	/** Live updates skipped because the model was still busy (a sign it can't keep up). */
+	skippedPartials = 0;
 	private nextId = 0;
 	private pendingFinals: Float32Array[] = [];
 
@@ -53,13 +57,16 @@ export class LiveTranscriber {
 	private lastPartialAt = 0;
 	private noiseFloor = 0.004;
 
-	constructor(private handlers: LiveTranscriptHandlers) {
+	constructor(
+		private handlers: LiveTranscriptHandlers,
+		model: SpeechModel,
+	) {
 		this.workerUrl = URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' }));
 		this.worker = new Worker(this.workerUrl, { type: 'module' });
 		this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => this.onMessage(event.data);
 		// Errors the worker can't report itself, such as failing to start at all
 		this.worker.onerror = (event: ErrorEvent) => this.handlers.onError(event.message || 'The transcription worker stopped unexpectedly');
-		this.post({ type: 'load', kind: 'live' });
+		this.post({ type: 'load', model });
 	}
 
 	async listen(stream: MediaStream): Promise<void> {
@@ -120,13 +127,16 @@ export class LiveTranscriber {
 
 	private requestPartial(): void {
 		// Skip if the worker is still busy, so it never falls behind; the next one catches up
-		if (!this.ready || this.busy || this.pendingFinals.length) return;
+		if (!this.ready || this.busy || this.pendingFinals.length) {
+			if (this.ready) this.skippedPartials++;
+			return;
+		}
 		this.lastPartialAt = performance.now();
-		this.send(join(this.phrase), false);
+		this.send(normalizeLoudness(join(this.phrase)), false);
 	}
 
 	private endPhrase(): void {
-		this.pendingFinals.push(join(this.phrase));
+		this.pendingFinals.push(normalizeLoudness(join(this.phrase)));
 		this.phrase = [];
 		this.speaking = false;
 		this.silenceMs = 0;
@@ -160,12 +170,12 @@ export class LiveTranscriber {
 				break;
 			case 'ready':
 				this.ready = true;
-				this.handlers.onReady(message.device, message.loadMs);
+				this.handlers.onReady(message.device, message.loadMs, message.model, message.precision);
 				this.drain();
 				break;
 			case 'result':
 				this.busy = false;
-				this.handlers.onTiming(message.ms, message.audioMs);
+				this.handlers.onTiming(message.ms, message.audioMs, message.final);
 				if (message.final) this.handlers.onFinal(message.text);
 				else if (!this.pendingFinals.length) this.handlers.onPartial(message.text);
 				this.drain();
