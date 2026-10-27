@@ -1,8 +1,8 @@
-// Paintings are made in black ink, which the model does reliably, and shown in one ink color chosen in
-// settings. An SVG filter maps each pixel's lightness from the ink color (dark) to paper (light), so every
-// painting is exactly one color and matches the others. The paper stays light in dark mode too: a painting is
-// a print on paper, like a photo, and mapping it onto the dark card would turn it into a negative.
-// The files stay black; changing the color never needs a repaint.
+// Paintings are made in black ink, which the model does reliably, and shown in one ink color by an SVG
+// filter that reads each pixel's lightness. Light theme: the ink becomes the color and the paper vanishes, so
+// red strokes sit straight on the card. Dark theme: the other way round, like a woodcut's carved lines: the
+// solid ink vanishes into the dark card and the light lines become the color. (Keeping the ink as the color on
+// a dark card made solid areas glow and looked like a negative.) The files stay black; nothing is repainted.
 
 export type InkName = 'cinnabar' | 'vermilion' | 'crimson' | 'oxblood' | 'black';
 
@@ -16,8 +16,6 @@ export const INKS: Record<InkName, string> = {
 
 const SVG = 'http://www.w3.org/2000/svg';
 export const INK_FILTER_ID = 'jeong-ink';
-/** Hanji: the light paper paintings are printed on, in both themes. */
-const PAPER = [251, 246, 236];
 
 /** Puts (or updates) the ink filter in `root`, and marks it so paintings inside use it. */
 export function applyInk(root: HTMLElement, ink: InkName): void {
@@ -33,20 +31,24 @@ export function applyInk(root: HTMLElement, ink: InkName): void {
 		filter = svg.appendChild(document.createElementNS(SVG, 'filter'));
 		filter.id = INK_FILTER_ID;
 		filter.setAttribute('color-interpolation-filters', 'sRGB');
-		const gray = filter.appendChild(document.createElementNS(SVG, 'feColorMatrix'));
-		gray.setAttribute('type', 'matrix');
-		gray.setAttribute('values', '0.33 0.33 0.33 0 0  0.33 0.33 0.33 0 0  0.33 0.33 0.33 0 0  0 0 0 1 0');
-		const transfer = filter.appendChild(document.createElementNS(SVG, 'feComponentTransfer'));
-		for (const channel of ['R', 'G', 'B']) {
-			const func = transfer.appendChild(document.createElementNS(SVG, `feFunc${channel}`));
-			func.setAttribute('type', 'table');
-		}
 	}
+	filter.empty();
 
-	const inkRgb = rgb(color) ?? [178, 67, 47];
-	filter.querySelectorAll('feComponentTransfer > *').forEach((func, i) => {
-		func.setAttribute('tableValues', `${((inkRgb[i] ?? 0) / 255).toFixed(3)} ${((PAPER[i] ?? 255) / 255).toFixed(3)}`);
-	});
+	const card = rgb(getComputedStyle(root).getPropertyValue('--jeong-card').trim());
+	const dark = !!card && card.reduce((sum, v) => sum + v, 0) / card.length < 128;
+	const [r, g, b] = (rgb(color) ?? [178, 67, 47]).map((v) => (v / 255).toFixed(3));
+	// How opaque each pixel is: its darkness in the light theme, its lightness in the dark theme
+	const opacity = dark ? '0.33 0.33 0.33 0 0' : '-0.33 -0.33 -0.33 0 1';
+	primitive(filter, 'feColorMatrix', { type: 'matrix', values: `0 0 0 0 ${r}  0 0 0 0 ${g}  0 0 0 0 ${b}  ${opacity}` });
+	// The faint grain at the far end would leave a haze; it's cut away, and the strokes kept crisp
+	const alpha = primitive(filter, 'feComponentTransfer', {});
+	primitive(alpha, 'feFuncA', { type: 'linear', slope: '1.3', intercept: '-0.12' });
+}
+
+function primitive(parent: Element, name: string, attributes: Record<string, string>): Element {
+	const el = parent.appendChild(document.createElementNS(SVG, name));
+	for (const [key, value] of Object.entries(attributes)) el.setAttribute(key, value);
+	return el;
 }
 
 /** "#B2432F" → [178, 67, 47]. */
