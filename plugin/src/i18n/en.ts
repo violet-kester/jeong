@@ -12,6 +12,21 @@ export const en = {
 	'timeline.empty': 'No entries this year yet. Press the microphone to record your first one.',
 	'command.newEntry': 'Record a new entry',
 	'command.transcriptionTest': 'Transcription test',
+	'command.writeStory': 'Write the story for this entry',
+
+	'files.transcript': 'Transcript',
+	'files.transcriptAbout': 'Word for word what you said, with times. The written version is',
+	'files.aiDraft': 'AI draft',
+	'files.draftAbout': 'What the AI wrote from your transcript, untouched, kept so you can compare. The final version is',
+	'files.yourStory': 'your story',
+
+	'story.writing': 'Writing your story…',
+	'story.checking': 'Checking it against what you said…',
+	'story.rewriting': 'Fixing a few sentences that weren’t in what you said…',
+	'story.summarizing': 'Writing a title and summary…',
+	'story.done': 'Your story is ready.',
+	'story.notReady': 'Saved with your transcript. To turn it into a story, start Ollama, then run “Write the story for this entry”.',
+	'story.failed': 'Your entry is saved with its transcript, but the story couldn’t be written. You can try again with “Write the story for this entry”.',
 	'command.showPerformance': 'Show performance',
 
 	'test.title': 'Transcription test',
@@ -73,6 +88,10 @@ export const en = {
 
 	'settings.journalFolder.name': 'Journal folder',
 	'settings.journalFolder.desc': 'Where Jeong keeps your entries, inside this vault.',
+	'settings.storyModel.name': 'Story model',
+	'settings.storyModel.desc': 'The model in Ollama that writes your stories and summaries, on this computer.',
+	'settings.ollamaUrl.name': 'Ollama address',
+	'settings.ollamaUrl.desc': 'Where Ollama runs. Keep this on your own computer (localhost).',
 	'settings.liveModel.name': 'Live transcript model',
 	'settings.liveModel.desc': 'How the words you see while you talk are written. Recommended: a quick guess first, then the accurate version each time you pause. Moonshine only is lighter for slower computers.',
 	'settings.liveModel.hybrid': 'Quick guess, then accurate (recommended)',

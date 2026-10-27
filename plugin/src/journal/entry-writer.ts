@@ -1,13 +1,15 @@
 import { App, TFile, TFolder, moment, normalizePath, stringifyYaml } from 'obsidian';
 import type { Segment } from '../transcribe/messages';
 import { extensionFor } from '../storage/temp-file';
+import { t } from '../i18n';
 
 // Writes a finished recording into the journal as an entry folder:
 //
 //   <journal>/2026/10 October/2026-10-27 Title/
-//     Title.md          the entry (for now, the transcript; later, the story)
-//     transcript.md     word for word, with timestamps
-//     recording.webm    what was said
+//     Title.md                 the entry: the story (the transcript until the story is written)
+//     Title (transcript).md    word for word, with timestamps
+//     Title (AI draft).md      what the AI wrote, untouched, added once the story is written
+//     recording.webm           what was said
 //
 // Folder and file names sort by date, read well in a file explorer, and are safe on
 // Windows, macOS, and USB drives. Month names follow Obsidian's display language.
@@ -42,10 +44,11 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 	await app.vault.createBinary(`${folder}/${recordingName}`, await entry.recording.arrayBuffer());
 
 	const duration = formatTime(entry.durationMs / 1000);
-	const transcriptNote = `${folder}/transcript.md`;
+	const name = safeName(title);
 	await app.vault.create(
-		transcriptNote,
-		frontmatter({ title: `${title} (transcript)`, date: day, recording: recordingName, engine: entry.engine }) +
+		`${folder}/${name} (transcript).md`,
+		frontmatter({ kind: 'transcript', entry: `[[${name}]]`, date: day, recording: recordingName, engine: entry.engine }) +
+			`> [!quote] ${t('files.transcript')}\n> ${t('files.transcriptAbout')} [[${name}|${t('files.yourStory')}]].\n\n` +
 			`![[${recordingName}]]\n\n` +
 			(entry.segments.length
 				? entry.segments.map((s) => `**[${formatTime(s.start)}]** ${s.text}`).join('\n\n')
@@ -54,7 +57,7 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 	);
 
 	const main = await app.vault.create(
-		`${folder}/${safeName(title)}.md`,
+		`${folder}/${name}.md`,
 		frontmatter({
 			title,
 			date: day,
@@ -66,13 +69,22 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 			language: entry.language,
 			visibility: 'private',
 			source: 'recording',
+			status: 'transcribed',
 			recordings: [recordingName],
 			engine: entry.engine,
 		}) +
 			`![[${recordingName}]]\n\n` +
+			`${relatedLine(name, false)}\n\n` +
 			`${entry.transcript}\n`,
 	);
 	return main;
+}
+
+/** The small line of links under the audio player: Transcript · AI draft. */
+export function relatedLine(name: string, hasDraft: boolean): string {
+	const links = [`[[${name} (transcript)|${t('files.transcript')}]]`];
+	if (hasDraft) links.push(`[[${name} (AI draft)|${t('files.aiDraft')}]]`);
+	return `*${links.join(' · ')}*`;
 }
 
 /** The first few words of what was said, as a short title. */

@@ -17,6 +17,7 @@ export type MetricEvent =
 	  }
 	| { event: 'recording'; durationMs: number; bytes: number; kbps: number; mimeType: string }
 	| { event: 'entry_saved'; durationMs: number; words: number; ms: number }
+	| { event: 'llm'; task: string; model: string; promptTokens: number; outputTokens: number; ms: number; tokensPerSecond: number }
 	| { event: 'quality'; kind: 'live' | 'final'; model: string; wer: number; referenceWords: number }
 	| { event: 'error'; where: string; message: string };
 

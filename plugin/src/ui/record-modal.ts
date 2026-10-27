@@ -5,6 +5,9 @@ import { Waveform } from './waveform';
 import { checkWebGpu } from '../diagnostics/webgpu';
 import { deleteTemp, extensionFor, saveToTemp } from '../storage/temp-file';
 import { writeEntry } from '../journal/entry-writer';
+import { writeStory } from '../compose/write-story';
+import type { Ollama } from '../compose/ollama';
+import { storyMessage } from './story-messages';
 import { LiveTranscriber } from '../transcribe/live-transcriber';
 import { transcribeRecording } from '../transcribe/final-transcriber';
 import { SpeechEngine, type EngineEvents, type Transcript } from '../transcribe/speech-engine';
@@ -17,6 +20,8 @@ export interface RecordModalOptions {
 	liveMode: LiveMode;
 	/** Where entries are saved, inside the vault. */
 	journalFolder: string;
+	/** The local language model that writes stories and summaries. */
+	ollama: Ollama;
 	/** Show the test script and score both transcripts against it. */
 	test?: boolean;
 }
@@ -246,6 +251,8 @@ export class RecordModal extends Modal {
 				void this.app.workspace.getLeaf(false).openFile(note);
 				this.close();
 			});
+			// Turn the transcript into a story, in the background; the entry is already safe
+			await writeStory(this.app, this.options.ollama, this.metrics, note, (progress) => this.status.setText(storyMessage(progress)));
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			console.error('Jeong: could not write the entry', error);

@@ -1,4 +1,7 @@
-import { Plugin } from 'obsidian';
+import { Notice, Plugin, TFile } from 'obsidian';
+import { Ollama } from './compose/ollama';
+import { writeStory } from './compose/write-story';
+import { storyMessage } from './ui/story-messages';
 import { TIMELINE_VIEW, TimelineView } from './ui/timeline-view';
 import { DEFAULT_SETTINGS, JeongSettings, JeongSettingTab } from './settings';
 import { RecordModal } from './ui/record-modal';
@@ -13,10 +16,12 @@ import { t } from './i18n';
 export default class JeongPlugin extends Plugin {
 	settings!: JeongSettings;
 	metrics!: Metrics;
+	ollama!: Ollama;
 
 	async onload() {
 		await this.loadSettings();
 		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, this.manifest.version);
+		this.ollama = new Ollama(() => this.settings.ollamaUrl, () => this.settings.storyModel);
 
 		this.registerView(TIMELINE_VIEW, (leaf) => new TimelineView(leaf, this));
 
@@ -36,9 +41,20 @@ export default class JeongPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'write-story',
+			name: t('command.writeStory'),
+			checkCallback: (checking) => {
+				const note = this.app.workspace.getActiveFile();
+				if (!note || !this.isEntry(note)) return false;
+				if (!checking) void this.writeStoryFor(note);
+				return true;
+			},
+		});
+
+		this.addCommand({
 			id: 'transcription-test',
 			name: t('command.transcriptionTest'),
-			callback: () => new RecordModal(this.app, this.metrics, { test: true, liveMode: this.settings.liveMode, journalFolder: this.settings.journalFolder }).open(),
+			callback: () => new RecordModal(this.app, this.metrics, { ...this.recordOptions(), test: true }).open(),
 		});
 
 		this.addCommand({
@@ -59,7 +75,23 @@ export default class JeongPlugin extends Plugin {
 	}
 
 	openRecorder() {
-		new RecordModal(this.app, this.metrics, { liveMode: this.settings.liveMode, journalFolder: this.settings.journalFolder }).open();
+		new RecordModal(this.app, this.metrics, this.recordOptions()).open();
+	}
+
+	private recordOptions() {
+		return { liveMode: this.settings.liveMode, journalFolder: this.settings.journalFolder, ollama: this.ollama };
+	}
+
+	/** An entry is a note in the journal folder with a date and a visibility in its frontmatter. */
+	private isEntry(file: TFile): boolean {
+		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		return file.path.startsWith(`${this.settings.journalFolder}/`) && typeof fm?.date === 'string' && fm !== undefined && 'visibility' in fm;
+	}
+
+	private async writeStoryFor(note: TFile) {
+		const notice = new Notice(storyMessage('story'), 0);
+		await writeStory(this.app, this.ollama, this.metrics, note, (progress) => notice.setMessage(storyMessage(progress)));
+		window.setTimeout(() => notice.hide(), 6000);
 	}
 
 	async loadSettings() {

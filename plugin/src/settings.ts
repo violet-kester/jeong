@@ -6,6 +6,10 @@ export interface JeongSettings {
 	journalFolder: string;
 	/** How the words you see while you talk are written. */
 	liveMode: LiveMode;
+	/** Where Ollama runs (on this computer). */
+	ollamaUrl: string;
+	/** The Ollama model that writes stories and summaries. */
+	storyModel: string;
 }
 
 /** hybrid: Moonshine guesses (light ink), Whisper writes each finished phrase (full ink). moonshine: Moonshine only, for slower computers. */
@@ -14,6 +18,8 @@ export type LiveMode = 'hybrid' | 'moonshine';
 export const DEFAULT_SETTINGS: JeongSettings = {
 	journalFolder: 'spaces/jeong',
 	liveMode: 'hybrid',
+	ollamaUrl: 'http://localhost:11434',
+	storyModel: 'granite4:tiny-h',
 };
 
 export class JeongSettingTab extends PluginSettingTab {
@@ -51,6 +57,32 @@ export class JeongSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.liveMode)
 					.onChange(async (value) => {
 						this.plugin.settings.liveMode = value === 'moonshine' ? 'moonshine' : 'hybrid';
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName(t('settings.storyModel.name'))
+			.setDesc(t('settings.storyModel.desc'))
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_SETTINGS.storyModel)
+					.setValue(this.plugin.settings.storyModel)
+					.onChange(async (value) => {
+						this.plugin.settings.storyModel = value.trim() || DEFAULT_SETTINGS.storyModel;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName(t('settings.ollamaUrl.name'))
+			.setDesc(t('settings.ollamaUrl.desc'))
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_SETTINGS.ollamaUrl)
+					.setValue(this.plugin.settings.ollamaUrl)
+					.onChange(async (value) => {
+						this.plugin.settings.ollamaUrl = value.trim() || DEFAULT_SETTINGS.ollamaUrl;
 						await this.plugin.saveSettings();
 					}),
 			);
