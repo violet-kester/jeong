@@ -2,6 +2,14 @@
 // Keep the wording plain and friendly (see "Easy for everyone" in the project notes).
 export const en = {
 	'ribbon.record': 'Record a new entry',
+	'ribbon.timeline': 'Open your timeline',
+	'command.openTimeline': 'Open timeline',
+
+	'timeline.title': 'Jeong timeline',
+	'timeline.earlier': 'Earlier',
+	'timeline.later': 'Later',
+	'timeline.today': 'Today',
+	'timeline.empty': 'No entries this year yet. Press the microphone to record your first one.',
 	'command.newEntry': 'Record a new entry',
 	'command.transcriptionTest': 'Transcription test',
 	'command.showPerformance': 'Show performance',
@@ -34,6 +42,11 @@ export const en = {
 	'record.recording': 'Recording… press Stop when you’re done.',
 	'record.saving': 'Saving…',
 	'record.saved': 'Saved. This is a test recording, so it isn’t an entry yet.',
+	'record.writing': 'Writing your entry…',
+	'record.savedEntry': 'Saved to your journal.',
+	'record.openEntry': 'Open entry',
+	'record.entryFailed': 'I couldn’t write the entry, but your recording is safe in the temp folder shown below.',
+	'record.keptInTemp': 'The transcript didn’t finish, but your recording is safe in the temp folder shown below.',
 	'record.saveFailed': 'I couldn’t save that recording. Nothing else was changed. Try again, and if it keeps happening, let us know.',
 	'record.noMicrophone': 'I can’t reach your microphone. Check that it’s plugged in and that Obsidian is allowed to use it.',
 

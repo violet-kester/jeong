@@ -1,12 +1,13 @@
-import { App, Modal } from 'obsidian';
+import { App, Modal, moment } from 'obsidian';
 import { t } from '../i18n';
-import { Recorder } from '../audio/recorder';
+import { Recorder, type Recording } from '../audio/recorder';
 import { Waveform } from './waveform';
 import { checkWebGpu } from '../diagnostics/webgpu';
-import { extensionFor, saveToTemp } from '../storage/temp-file';
+import { deleteTemp, extensionFor, saveToTemp } from '../storage/temp-file';
+import { writeEntry } from '../journal/entry-writer';
 import { LiveTranscriber } from '../transcribe/live-transcriber';
 import { transcribeRecording } from '../transcribe/final-transcriber';
-import { SpeechEngine, type EngineEvents } from '../transcribe/speech-engine';
+import { SpeechEngine, type EngineEvents, type Transcript } from '../transcribe/speech-engine';
 import type { Metrics } from '../metrics/metrics';
 import { TEST_SCRIPT, wordErrorRate } from '../metrics/word-error-rate';
 import type { LiveMode } from '../settings';
@@ -14,6 +15,8 @@ import type { LiveMode } from '../settings';
 export interface RecordModalOptions {
 	/** How the live transcript is written. */
 	liveMode: LiveMode;
+	/** Where entries are saved, inside the vault. */
+	journalFolder: string;
 	/** Show the test script and score both transcripts against it. */
 	test?: boolean;
 }
@@ -27,6 +30,7 @@ export class RecordModal extends Modal {
 	private moonshine: SpeechEngine | null = null;
 	private whisper: SpeechEngine | null = null;
 	private timerFrame = 0;
+	private startedAt = new Date();
 	private live = { ms: 0, audioMs: 0, phrases: 0, text: [] as string[] };
 	private models = { live: '', final: '' };
 
@@ -154,6 +158,7 @@ export class RecordModal extends Modal {
 			return;
 		}
 		if (!this.recorder.analyser || !this.recorder.stream) return;
+		this.startedAt = new Date();
 		this.waveform = new Waveform(this.canvas, this.recorder.analyser);
 		this.waveform.start();
 		await this.transcriber?.listen(this.recorder.stream);
@@ -173,19 +178,9 @@ export class RecordModal extends Modal {
 		const liveDone = this.transcriber?.finish() ?? Promise.resolve();
 		const recording = await this.recorder.stop();
 		this.button.setText(t('record.start'));
+		this.button.disabled = true;
 		this.status.setText(t('record.saving'));
-		this.comparison.setText(t('compare.reading'));
-		// Whisper finishes the live phrases first (same queue), then reads the whole recording
-		if (this.whisper) {
-			transcribeRecording(this.whisper, recording.blob)
-				.then((result) => this.showFinal(result.text, result.ms, result.audioMs))
-				.catch((error: unknown) => {
-					const message = error instanceof Error ? error.message : String(error);
-					this.comparison.setText(`${t('check.error')}: ${message}`);
-					this.metrics.log({ event: 'error', where: 'final-transcript', message });
-				});
-		}
-
+		this.addDetail(t('check.format'), recording.mimeType || t('check.unknown'));
 		this.metrics.log({
 			event: 'recording',
 			durationMs: Math.round(recording.durationMs),
@@ -193,31 +188,103 @@ export class RecordModal extends Modal {
 			kbps: Math.round((recording.blob.size * 8) / Math.max(1, recording.durationMs)),
 			mimeType: recording.mimeType,
 		});
-		await liveDone;
-		if (this.live.audioMs) {
-			this.metrics.log({
-				event: 'transcribe',
-				kind: 'live',
-				model: this.liveLabel,
-				audioMs: Math.round(this.live.audioMs),
-				ms: Math.round(this.live.ms),
-				speed: round(this.live.audioMs / Math.max(1, this.live.ms)),
-				phrases: this.live.phrases,
-				skippedPartials: this.transcriber?.skippedPartials ?? 0,
-			});
-		}
-		this.addDetail(t('check.format'), recording.mimeType || t('check.unknown'));
-		const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-		const sizeKb = Math.round(recording.blob.size / 1024);
+
+		// Keep a safe copy first, outside the vault, so nothing is lost if anything below fails
+		const tempPath = await this.saveTemp(recording.blob, recording.mimeType);
+
+		// Whisper finishes the live phrases first (same queue), then reads the whole recording
+		this.comparison.setText(t('compare.reading'));
+		let result: Transcript | null = null;
 		try {
-			const path = await saveToTemp(recording.blob, `test-${stamp}.${extensionFor(recording.mimeType)}`);
-			this.addDetail(t('check.saved'), path ? `${path} (${sizeKb} KB)` : t('check.savedLater'));
+			if (this.whisper) result = await transcribeRecording(this.whisper, recording.blob);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.comparison.setText(`${t('check.error')}: ${message}`);
+			this.metrics.log({ event: 'error', where: 'final-transcript', message });
+		}
+		await liveDone;
+		this.logLive();
+		this.button.disabled = false;
+		if (!result) {
+			this.status.setText(t('record.keptInTemp'));
+			return;
+		}
+		this.showFinal(result.text, result.ms, result.audioMs);
+
+		if (this.options.test) {
 			this.status.setText(t('record.saved'));
+			return;
+		}
+		await this.saveEntry(recording, result, tempPath);
+	}
+
+	private async saveEntry(recording: Recording, result: Transcript, tempPath: string | null): Promise<void> {
+		this.status.setText(t('record.writing'));
+		const started = performance.now();
+		try {
+			const note = await writeEntry(this.app, this.options.journalFolder, {
+				recording: recording.blob,
+				mimeType: recording.mimeType,
+				durationMs: recording.durationMs,
+				startedAt: this.startedAt,
+				transcript: result.text,
+				segments: result.segments ?? [],
+				engine: `jeong-plugin ${this.metrics.version} · ${shortName(this.models.final)}`,
+				language: this.language,
+			});
+			this.metrics.log({
+				event: 'entry_saved',
+				durationMs: Math.round(recording.durationMs),
+				words: result.text.split(/\s+/).filter(Boolean).length,
+				ms: Math.round(performance.now() - started),
+			});
+			if (tempPath) await deleteTemp(tempPath);
+			this.status.setText(t('record.savedEntry'));
+			const open = this.contentEl.createEl('button', { cls: 'jeong-record-button', text: t('record.openEntry') });
+			this.status.after(open);
+			open.addEventListener('click', () => {
+				void this.app.workspace.getLeaf(false).openFile(note);
+				this.close();
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error('Jeong: could not write the entry', error);
+			this.status.setText(t('record.entryFailed'));
+			this.metrics.log({ event: 'error', where: 'write-entry', message });
+		}
+	}
+
+	/** Saves the recording to the temp folder and shows where. Returns the path, or null if that isn't possible. */
+	private async saveTemp(blob: Blob, mimeType: string): Promise<string | null> {
+		const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+		try {
+			const path = await saveToTemp(blob, `recording-${stamp}.${extensionFor(mimeType)}`);
+			this.addDetail(t('check.saved'), path ? `${path} (${Math.round(blob.size / 1024)} KB)` : t('check.savedLater'));
+			return path;
 		} catch (error) {
 			console.error('Jeong: could not save the recording', error);
-			this.status.setText(t('record.saveFailed'));
 			this.metrics.log({ event: 'error', where: 'save', message: error instanceof Error ? error.message : String(error) });
+			return null;
 		}
+	}
+
+	private logLive(): void {
+		if (!this.live.audioMs) return;
+		this.metrics.log({
+			event: 'transcribe',
+			kind: 'live',
+			model: this.liveLabel,
+			audioMs: Math.round(this.live.audioMs),
+			ms: Math.round(this.live.ms),
+			speed: round(this.live.audioMs / Math.max(1, this.live.ms)),
+			phrases: this.live.phrases,
+			skippedPartials: this.transcriber?.skippedPartials ?? 0,
+		});
+	}
+
+	/** Best guess at the spoken language until the models detect it: Obsidian's display language. */
+	private get language(): string {
+		return moment.locale().split('-')[0] ?? 'en';
 	}
 
 	private showFinal(text: string, ms: number, audioMs: number): void {

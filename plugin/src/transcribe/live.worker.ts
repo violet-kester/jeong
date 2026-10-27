@@ -5,7 +5,7 @@
 
 import './browser-only';
 import { pipeline, env, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
-import type { SpeechModel, WorkerRequest, WorkerResponse } from './messages';
+import type { Segment, SpeechModel, WorkerRequest, WorkerResponse } from './messages';
 
 // Models download from Hugging Face once, then live in the browser cache (outside the vault)
 env.allowLocalModels = false;
@@ -56,18 +56,35 @@ async function load(requested: SpeechModel): Promise<void> {
 	send({ type: 'ready', device, loadMs: performance.now() - started, model: model.id, precision });
 }
 
-async function transcribe(id: number, audio: Float32Array, final: boolean): Promise<void> {
+interface Output {
+	text: string;
+	chunks?: { timestamp: [number, number | null]; text: string }[];
+}
+
+async function transcribe(id: number, audio: Float32Array, final: boolean, timestamps: boolean): Promise<void> {
 	if (!transcriber) return;
 	const started = performance.now();
+	const isWhisper = name === 'whisper-turbo';
 	// Whisper reads 30-second windows; long recordings are split with a little overlap
-	const output = await transcriber(audio, name === 'whisper-turbo' ? { chunk_length_s: 30, stride_length_s: 5 } : {});
-	const outputs: { text: string }[] = Array.isArray(output) ? output : [output];
+	const output = await transcriber(audio, {
+		...(isWhisper ? { chunk_length_s: 30, stride_length_s: 5 } : {}),
+		...(isWhisper && timestamps ? { return_timestamps: true } : {}),
+	});
+	const outputs: Output[] = Array.isArray(output) ? output : [output];
 	const text = outputs.map((o) => o.text).join(' ').trim();
-	send({ type: 'result', id, text, final, ms: performance.now() - started, audioMs: (audio.length / 16_000) * 1000 });
+	const audioSeconds = audio.length / 16_000;
+	const segments: Segment[] | undefined = timestamps
+		? outputs.flatMap((o) => o.chunks ?? []).map((chunk) => ({
+				start: chunk.timestamp[0],
+				end: chunk.timestamp[1] ?? audioSeconds,
+				text: chunk.text.trim(),
+			}))
+		: undefined;
+	send({ type: 'result', id, text, segments, final, ms: performance.now() - started, audioMs: audioSeconds * 1000 });
 }
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
 	const message = event.data;
-	const work = message.type === 'load' ? load(message.model) : transcribe(message.id, message.audio, message.final);
+	const work = message.type === 'load' ? load(message.model) : transcribe(message.id, message.audio, message.final, message.timestamps ?? false);
 	work.catch((error: unknown) => send({ type: 'error', message: error instanceof Error ? error.message : String(error) }));
 };

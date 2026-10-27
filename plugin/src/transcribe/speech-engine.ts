@@ -3,7 +3,7 @@
 // needs it (the live transcript and the final transcript both use the same Whisper).
 
 import workerCode from './live.worker?worker';
-import type { SpeechModel, WorkerRequest, WorkerResponse } from './messages';
+import type { Segment, SpeechModel, WorkerRequest, WorkerResponse } from './messages';
 
 export interface EngineEvents {
 	onStage(stage: 'loading' | 'warming'): void;
@@ -14,12 +14,15 @@ export interface EngineEvents {
 
 export interface Transcript {
 	text: string;
+	/** Timed stretches of the transcript, when asked for. */
+	segments?: Segment[];
 	ms: number;
 	audioMs: number;
 }
 
 interface Job {
 	audio: Float32Array;
+	timestamps: boolean;
 	resolve(result: Transcript): void;
 	reject(error: Error): void;
 }
@@ -46,9 +49,9 @@ export class SpeechEngine {
 	}
 
 	/** Queue audio for transcription. Waits for the model to finish loading if it hasn't yet. */
-	transcribe(audio: Float32Array): Promise<Transcript> {
+	transcribe(audio: Float32Array, options: { timestamps?: boolean } = {}): Promise<Transcript> {
 		return new Promise((resolve, reject) => {
-			this.queue.push({ audio, resolve, reject });
+			this.queue.push({ audio, timestamps: options.timestamps ?? false, resolve, reject });
 			this.next();
 		});
 	}
@@ -69,7 +72,7 @@ export class SpeechEngine {
 		}
 		this.current = job;
 		this.busy = true;
-		const message: WorkerRequest = { type: 'transcribe', id: this.nextId++, audio: job.audio, final: true };
+		const message: WorkerRequest = { type: 'transcribe', id: this.nextId++, audio: job.audio, final: true, timestamps: job.timestamps };
 		this.worker.postMessage(message, [job.audio.buffer]);
 	}
 
@@ -98,7 +101,7 @@ export class SpeechEngine {
 				this.next();
 				break;
 			case 'result':
-				this.current?.resolve({ text: message.text, ms: message.ms, audioMs: message.audioMs });
+				this.current?.resolve({ text: message.text, segments: message.segments, ms: message.ms, audioMs: message.audioMs });
 				this.current = null;
 				this.next();
 				break;

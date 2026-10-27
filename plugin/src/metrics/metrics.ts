@@ -16,6 +16,7 @@ export type MetricEvent =
 			skippedPartials?: number;
 	  }
 	| { event: 'recording'; durationMs: number; bytes: number; kbps: number; mimeType: string }
+	| { event: 'entry_saved'; durationMs: number; words: number; ms: number }
 	| { event: 'quality'; kind: 'live' | 'final'; model: string; wer: number; referenceWords: number }
 	| { event: 'error'; where: string; message: string };
 
@@ -27,7 +28,7 @@ export class Metrics {
 	constructor(
 		private app: App,
 		private folder: () => string,
-		private version: string,
+		readonly version: string,
 	) {}
 
 	get directory(): string {

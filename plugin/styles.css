@@ -158,3 +158,164 @@
 	min-width: 150px;
 	color: var(--text-normal);
 }
+
+/* Timeline: a printed chart of the year */
+.jeong-timeline {
+	display: flex;
+	flex-direction: column;
+	padding: 0 !important;
+	overflow: hidden;
+	position: relative;
+}
+
+.jeong-timeline-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 20px;
+}
+
+.jeong-timeline-year {
+	font-size: 1.4em;
+	font-variant-numeric: tabular-nums;
+	min-width: 4ch;
+	text-align: center;
+}
+
+.jeong-timeline-bar .mod-cta {
+	margin-left: auto;
+}
+
+.jeong-timeline-scroller {
+	flex: 1;
+	overflow-x: auto;
+	overflow-y: hidden;
+	cursor: grab;
+}
+
+.jeong-timeline-track {
+	position: relative;
+	height: 100%;
+	min-height: 320px;
+}
+
+.jeong-timeline-month {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	padding: 4px 0 0 10px;
+	border-left: 1px solid var(--background-modifier-border);
+}
+
+.jeong-timeline-month b {
+	display: block;
+	font-family: "Hahmlet", "Gowun Batang", Georgia, serif;
+	font-weight: 200;
+	font-size: clamp(56px, 12vh, 140px);
+	line-height: 0.85;
+	color: var(--jeong-ink);
+	font-variant-numeric: tabular-nums;
+}
+
+.jeong-timeline-month small {
+	font-family: var(--font-monospace);
+	font-size: 0.75em;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--jeong-text-muted);
+}
+
+.jeong-timeline-axis {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 62%;
+	border-top: 1px solid var(--jeong-ink);
+	opacity: 0.6;
+}
+
+.jeong-timeline-now {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	border-left: 1.5px solid var(--jeong-persimmon);
+	pointer-events: none;
+}
+
+.jeong-timeline-now span {
+	position: absolute;
+	bottom: 10px;
+	left: 6px;
+	white-space: nowrap;
+	font-family: var(--font-monospace);
+	font-size: 0.75em;
+	text-transform: uppercase;
+	color: var(--jeong-persimmon);
+}
+
+.jeong-timeline-entry {
+	position: absolute;
+	top: calc(62% - 9px - var(--stack) * 24px);
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	margin-left: -9px;
+	border-radius: 50%;
+	border: 3px solid var(--jeong-ink);
+	background: var(--background-primary);
+	box-shadow: none;
+	cursor: pointer;
+	transition: transform 0.2s ease;
+}
+
+.jeong-timeline-entry:hover,
+.jeong-timeline-entry.is-selected {
+	transform: scale(1.3);
+	background: var(--jeong-persimmon);
+	border-color: var(--jeong-persimmon);
+}
+
+.jeong-timeline-empty {
+	position: absolute;
+	top: 66%;
+	left: 40px;
+	font-size: 1.1em;
+	color: var(--jeong-text-muted);
+}
+
+.jeong-timeline-card {
+	position: absolute;
+	right: 20px;
+	bottom: 20px;
+	width: min(360px, calc(100% - 40px));
+	max-height: 55%;
+	overflow-y: auto;
+	padding: 16px 18px;
+	display: grid;
+	gap: 8px;
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
+.jeong-timeline-card h2 {
+	margin: 0;
+	font-size: 1.3em;
+}
+
+.jeong-timeline-card p {
+	margin: 0;
+	line-height: 1.6;
+	color: var(--jeong-text-muted);
+}
+
+.jeong-timeline-card-meta {
+	font-family: var(--font-monospace);
+	font-size: 0.75em;
+	color: var(--jeong-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.jeong-timeline-entry { transition: none; }
+}

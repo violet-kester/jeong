@@ -19,6 +19,16 @@ function nodeRequire<T>(id: string): T {
 	return req(id) as T;
 }
 
+/** Deletes a temp recording once it's safely in the journal. Never throws. */
+export async function deleteTemp(file: string): Promise<void> {
+	if (!Platform.isDesktopApp) return;
+	try {
+		await nodeRequire<typeof import('fs')>('fs').promises.unlink(file);
+	} catch {
+		// Leaving a temp file behind is harmless; the system cleans its temp folder
+	}
+}
+
 /** Saves a blob to the temp folder and returns its path, or null where that isn't possible (mobile). */
 export async function saveToTemp(blob: Blob, name: string): Promise<string | null> {
 	if (!Platform.isDesktopApp) return null;
