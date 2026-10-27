@@ -44,6 +44,8 @@ const copyStatic = {
 	setup(build) {
 		build.onEnd(() => {
 			fs.copyFileSync('manifest.json', path.join(outDir, 'manifest.json'));
+			// BRAT (for installing on phones) reads the manifest at the repo root; keep it in sync
+			fs.copyFileSync('manifest.json', path.join('..', 'manifest.json'));
 			fs.writeFileSync(path.join(outDir, 'styles.css'), `${fontFaces()}\n\n${fs.readFileSync('styles.css', 'utf8')}`);
 			if (!prod) fs.writeFileSync(path.join(outDir, '.hotreload'), '');
 		});

@@ -119,6 +119,7 @@ export class TimelineView extends ItemView {
 			mark.style.left = `${this.x(dayOfYear(new Date(`${entry.date}T12:00`)))}px`;
 			mark.style.setProperty('--stack', String(stack));
 			if (entry.file.path === this.selected) mark.addClass('is-selected');
+			if (entry.status === 'recorded') mark.addClass('is-waiting');
 			mark.addEventListener('click', () => {
 				if (this.dragging.moved) return;
 				this.selected = entry.file.path;
@@ -141,7 +142,7 @@ export class TimelineView extends ItemView {
 			.join(' · ');
 		this.card.createDiv({ cls: 'jeong-timeline-card-meta', text: meta });
 		this.card.createEl('h2', { text: entry.title });
-		const excerpt = entry.summary || (await this.excerpt(entry));
+		const excerpt = entry.status === 'recorded' ? t('timeline.waiting') : entry.summary || (await this.excerpt(entry));
 		if (excerpt) this.card.createEl('p', { text: excerpt });
 		const open = this.card.createEl('button', { cls: 'mod-cta', text: t('record.openEntry') });
 		open.addEventListener('click', () => void this.app.workspace.getLeaf(false).openFile(entry.file));

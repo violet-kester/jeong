@@ -58,6 +58,12 @@ export const en = {
 	'record.saving': 'Saving…',
 	'record.saved': 'Saved. This is a test recording, so it isn’t an entry yet.',
 	'record.writing': 'Writing your entry…',
+	'record.readyPhone': 'Press the button and start talking. Your computer will write it up later.',
+	'record.savedLoose': 'Saved. It’s on your timeline, waiting to be written up on your computer.',
+
+	'loose.title': 'Recording',
+	'loose.waiting': 'Waiting to be written up. Open Jeong on your computer to turn this recording into an entry.',
+	'timeline.waiting': 'Waiting to be written up on your computer.',
 	'record.savedEntry': 'Saved to your journal.',
 	'record.openEntry': 'Open entry',
 	'record.entryFailed': 'I couldn’t write the entry, but your recording is safe in the temp folder shown below.',

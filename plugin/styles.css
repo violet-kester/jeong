@@ -335,3 +335,9 @@
 @media (prefers-reduced-motion: reduce) {
 	.jeong-timeline-entry { transition: none; }
 }
+
+/* A recording waiting to be written up: a dashed, hollow circle */
+.jeong-timeline-entry.is-waiting {
+	border-style: dashed;
+	opacity: 0.75;
+}

@@ -1,10 +1,11 @@
-import { App, Modal, moment } from 'obsidian';
+import { App, Modal, Platform, moment } from 'obsidian';
 import { t } from '../i18n';
 import { Recorder, type Recording } from '../audio/recorder';
 import { Waveform } from './waveform';
 import { checkWebGpu } from '../diagnostics/webgpu';
 import { deleteTemp, extensionFor, saveToTemp } from '../storage/temp-file';
 import { writeEntry } from '../journal/entry-writer';
+import { saveLoosePage } from '../journal/loose-pages';
 import { writeStory } from '../compose/write-story';
 import type { Ollama } from '../compose/ollama';
 import { storyMessage } from './story-messages';
@@ -78,11 +79,21 @@ export class RecordModal extends Modal {
 		this.button.addEventListener('click', () => void this.toggle());
 
 		this.details = contentEl.createDiv({ cls: 'jeong-record-details' });
+		// Phones can't run the speech models: record only, and write it up on a computer later
+		if (this.onPhone) {
+			this.transcript.hide();
+			this.status.setText(t('record.readyPhone'));
+			return;
+		}
 		this.modelRow = this.addDetail(t('check.liveModel'), t('check.loading'));
 		this.speedRow = this.addDetail(t('check.speed'), '—');
 		this.finalRow = this.addDetail(t('check.finalModel'), t('check.loading'));
 		void this.showSystemCheck();
 		this.startTranscribers();
+	}
+
+	private get onPhone(): boolean {
+		return Platform.isMobile;
 	}
 
 	onClose(): void {
@@ -194,6 +205,11 @@ export class RecordModal extends Modal {
 			mimeType: recording.mimeType,
 		});
 
+		if (this.onPhone) {
+			await this.saveLoose(recording);
+			return;
+		}
+
 		// Keep a safe copy first, outside the vault, so nothing is lost if anything below fails
 		const tempPath = await this.saveTemp(recording.blob, recording.mimeType);
 
@@ -258,6 +274,33 @@ export class RecordModal extends Modal {
 			console.error('Jeong: could not write the entry', error);
 			this.status.setText(t('record.entryFailed'));
 			this.metrics.log({ event: 'error', where: 'write-entry', message });
+		}
+	}
+
+	/** On a phone: save the recording to Loose pages, to be written up on a computer later. */
+	private async saveLoose(recording: Recording): Promise<void> {
+		try {
+			const note = await saveLoosePage(this.app, this.options.journalFolder, {
+				recording: recording.blob,
+				mimeType: recording.mimeType,
+				durationMs: recording.durationMs,
+				startedAt: this.startedAt,
+				language: this.language,
+			});
+			this.status.setText(t('record.savedLoose'));
+			this.button.disabled = false;
+			const open = this.contentEl.createEl('button', { cls: 'jeong-record-button', text: t('record.openEntry') });
+			this.status.after(open);
+			open.addEventListener('click', () => {
+				void this.app.workspace.getLeaf(false).openFile(note);
+				this.close();
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error('Jeong: could not save the recording', error);
+			this.status.setText(t('record.saveFailed'));
+			this.button.disabled = false;
+			this.metrics.log({ event: 'error', where: 'save-loose', message });
 		}
 	}
 

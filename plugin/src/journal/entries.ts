@@ -11,6 +11,8 @@ export interface EntryInfo {
 	time: string; // HH:mm, or '' if unknown
 	duration: string;
 	summary: string;
+	/** recorded (waiting to be written up), transcribed, or written */
+	status: string;
 }
 
 export function listEntries(app: App, journalFolder: string): EntryInfo[] {
@@ -27,6 +29,7 @@ export function listEntries(app: App, journalFolder: string): EntryInfo[] {
 			time: text(fm.time),
 			duration: text(fm.duration),
 			summary: text(fm.summary),
+			status: text(fm.status),
 		});
 	}
 	return entries.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
