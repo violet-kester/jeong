@@ -1,4 +1,5 @@
-import { Notice, Plugin, TFile } from 'obsidian';
+import { Notice, Platform, Plugin, TFile } from 'obsidian';
+import { LooseProcessor } from './journal/process-loose';
 import { Ollama } from './compose/ollama';
 import { writeStory } from './compose/write-story';
 import { storyMessage } from './ui/story-messages';
@@ -17,11 +18,13 @@ export default class JeongPlugin extends Plugin {
 	settings!: JeongSettings;
 	metrics!: Metrics;
 	ollama!: Ollama;
+	loose!: LooseProcessor;
 
 	async onload() {
 		await this.loadSettings();
 		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, this.manifest.version);
 		this.ollama = new Ollama(() => this.settings.ollamaUrl, () => this.settings.storyModel);
+		this.loose = new LooseProcessor(this.app, () => this.settings.journalFolder, this.ollama, this.metrics, this.manifest.version);
 
 		this.registerView(TIMELINE_VIEW, (leaf) => new TimelineView(leaf, this));
 
@@ -63,6 +66,34 @@ export default class JeongPlugin extends Plugin {
 			callback: () => new PerformanceModal(this.app, this.metrics).open(),
 		});
 
+		this.addCommand({
+			id: 'process-loose-pages',
+			name: t('command.processLoose'),
+			callback: () => {
+				const queued = this.loose.processAll();
+				new Notice(queued ? `${t('loose.queued')} ${queued}` : t('loose.none'));
+			},
+		});
+
+		// On a computer, write up phone recordings as they arrive through sync, and any left from before
+		if (Platform.isDesktopApp) {
+			this.app.workspace.onLayoutReady(() => {
+				if (this.settings.autoProcessLoose) this.loose.processAll();
+				this.registerEvent(
+					this.app.metadataCache.on('changed', (file) => {
+						if (!this.settings.autoProcessLoose || file.parent?.path !== this.loose.folder) return;
+						if (this.app.metadataCache.getFileCache(file)?.frontmatter?.status === 'recorded') this.loose.enqueue(file);
+					}),
+				);
+				// Sync can deliver the note before its recording; try again once the audio arrives
+				this.registerEvent(
+					this.app.vault.on('create', (file) => {
+						if (this.settings.autoProcessLoose && file.parent?.path === this.loose.folder && !file.path.endsWith('.md')) this.loose.processAll();
+					}),
+				);
+			});
+		}
+
 		this.addSettingTab(new JeongSettingTab(this.app, this));
 	}
 
@@ -72,6 +103,10 @@ export default class JeongPlugin extends Plugin {
 		const leaf = existing ?? this.app.workspace.getLeaf('tab');
 		if (!existing) await leaf.setViewState({ type: TIMELINE_VIEW, active: true });
 		await this.app.workspace.revealLeaf(leaf);
+	}
+
+	onunload() {
+		this.loose?.dispose();
 	}
 
 	openRecorder() {

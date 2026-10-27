@@ -140,6 +140,15 @@ export class TimelineView extends ItemView {
 		const meta = [moment(`${entry.date} ${entry.time || '12:00'}`).format(entry.time ? 'LLLL' : 'LL'), entry.duration]
 			.filter(Boolean)
 			.join(' · ');
+		if (entry.photos.length) {
+			const [main, ...rest] = entry.photos;
+			if (main) this.card.createEl('img', { cls: 'jeong-timeline-card-photo', attr: { src: this.app.vault.getResourcePath(main), alt: '' } });
+			if (rest.length) {
+				const strip = this.card.createDiv({ cls: 'jeong-timeline-card-strip' });
+				for (const photo of rest.slice(0, 4)) strip.createEl('img', { attr: { src: this.app.vault.getResourcePath(photo), alt: '' } });
+				if (rest.length > 4) strip.createSpan({ cls: 'jeong-timeline-card-more', text: `+${rest.length - 4}` });
+			}
+		}
 		this.card.createDiv({ cls: 'jeong-timeline-card-meta', text: meta });
 		this.card.createEl('h2', { text: entry.title });
 		const excerpt = entry.status === 'recorded' ? t('timeline.waiting') : entry.summary || (await this.excerpt(entry));

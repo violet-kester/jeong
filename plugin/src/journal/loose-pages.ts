@@ -1,6 +1,8 @@
 import { App, TFile, TFolder, moment, normalizePath, stringifyYaml } from 'obsidian';
 import { extensionFor } from '../storage/temp-file';
 import { t } from '../i18n';
+import { photoExtension } from '../ui/photo-tray';
+import { embed, photoBlock } from './entry-writer';
 
 // Quick captures that haven't become entries yet, for example recordings made on a phone,
 // which can't run the transcription and story models. They're saved as:
@@ -16,6 +18,7 @@ export interface LooseRecording {
 	durationMs: number;
 	startedAt: Date;
 	language: string;
+	photos?: { name: string; type: string; data: Blob }[];
 }
 
 export async function saveLoosePage(app: App, journalFolder: string, capture: LooseRecording): Promise<TFile> {
@@ -30,6 +33,13 @@ export async function saveLoosePage(app: App, journalFolder: string, capture: Lo
 	const recordingName = `${base} recording.${extensionFor(capture.mimeType)}`;
 	await app.vault.createBinary(`${folder}/${recordingName}`, await capture.recording.arrayBuffer());
 
+	const photoNames: string[] = [];
+	for (const [i, photo] of (capture.photos ?? []).entries()) {
+		const photoName = `${base} photo ${i + 1}.${photoExtension(photo)}`;
+		await app.vault.createBinary(`${folder}/${photoName}`, await photo.data.arrayBuffer());
+		photoNames.push(photoName);
+	}
+
 	const seconds = Math.floor(capture.durationMs / 1000);
 	const fields = {
 		title: t('loose.title'),
@@ -43,9 +53,10 @@ export async function saveLoosePage(app: App, journalFolder: string, capture: Lo
 		source: 'recording',
 		status: 'recorded',
 		recordings: [recordingName],
+		...(photoNames.length ? { photos: photoNames } : {}),
 	};
 	return app.vault.create(
 		`${folder}/${base}.md`,
-		`---\n${stringifyYaml(fields)}---\n\n![[${recordingName}]]\n\n> [!info] ${t('loose.waiting')}\n`,
+		`---\n${stringifyYaml(fields)}---\n\n${embed(folder, recordingName)}\n\n> [!info] ${t('loose.waiting')}\n${photoBlock(folder, photoNames)}`,
 	);
 }

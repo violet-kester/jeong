@@ -1,6 +1,6 @@
 {
 	"name": "jeong-obsidian-plugin",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Jeong for Obsidian: record your thoughts and see them on a timeline, all locally.",
 	"main": "main.js",
 	"type": "module",

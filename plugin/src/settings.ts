@@ -10,6 +10,8 @@ export interface JeongSettings {
 	ollamaUrl: string;
 	/** The Ollama model that writes stories and summaries. */
 	storyModel: string;
+	/** On a computer, write up phone recordings automatically when they arrive. */
+	autoProcessLoose: boolean;
 }
 
 /** hybrid: Moonshine guesses (light ink), Whisper writes each finished phrase (full ink). moonshine: Moonshine only, for slower computers. */
@@ -20,6 +22,7 @@ export const DEFAULT_SETTINGS: JeongSettings = {
 	liveMode: 'hybrid',
 	ollamaUrl: 'http://localhost:11434',
 	storyModel: 'granite4:tiny-h',
+	autoProcessLoose: true,
 };
 
 export class JeongSettingTab extends PluginSettingTab {
@@ -59,6 +62,16 @@ export class JeongSettingTab extends PluginSettingTab {
 						this.plugin.settings.liveMode = value === 'moonshine' ? 'moonshine' : 'hybrid';
 						await this.plugin.saveSettings();
 					}),
+			);
+
+		new Setting(containerEl)
+			.setName(t('settings.autoProcess.name'))
+			.setDesc(t('settings.autoProcess.desc'))
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.autoProcessLoose).onChange(async (value) => {
+					this.plugin.settings.autoProcessLoose = value;
+					await this.plugin.saveSettings();
+				}),
 			);
 
 		new Setting(containerEl)

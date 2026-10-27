@@ -1,6 +1,7 @@
 import { App, TFile, TFolder, moment, normalizePath, stringifyYaml } from 'obsidian';
 import type { Segment } from '../transcribe/messages';
 import { extensionFor } from '../storage/temp-file';
+import { photoExtension } from '../ui/photo-tray';
 import { t } from '../i18n';
 
 // Writes a finished recording into the journal as an entry folder:
@@ -9,7 +10,8 @@ import { t } from '../i18n';
 //     Title.md                 the entry: the story (the transcript until the story is written)
 //     Title (transcript).md    word for word, with timestamps
 //     Title (AI draft).md      what the AI wrote, untouched, added once the story is written
-//     recording.webm           what was said
+//     2026-10-27 0915 recording.webm    what was said
+//     2026-10-27 0915 photo 1.jpg       photos, the first is the main one
 //
 // Folder and file names sort by date, read well in a file explorer, and are safe on
 // Windows, macOS, and USB drives. Month names follow Obsidian's display language.
@@ -23,6 +25,10 @@ export interface NewEntry {
 	segments: Segment[];
 	engine: string;
 	language: string;
+	/** Where it was recorded, if known (phone recordings bring their own); otherwise this computer's. */
+	timezone?: string;
+	/** Photos added to the entry, in order; the first is the main photo. Saved as the original files. */
+	photos?: { name: string; type: string; data: Blob }[];
 }
 
 /** Saves the entry and returns its main note. */
@@ -40,8 +46,17 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 	const folder = uniqueFolder(app, `${monthFolder}/${folderName}`);
 	await ensureFolder(app, folder);
 
-	const recordingName = `recording.${extensionFor(entry.mimeType)}`;
+	// Names unique across the whole vault (date and time first), so links can never point at another entry's file
+	const stamp = when.format('YYYY-MM-DD HHmm');
+	const recordingName = `${stamp} recording.${extensionFor(entry.mimeType)}`;
 	await app.vault.createBinary(`${folder}/${recordingName}`, await entry.recording.arrayBuffer());
+
+	const photoNames: string[] = [];
+	for (const [i, photo] of (entry.photos ?? []).entries()) {
+		const photoName = `${stamp} photo ${i + 1}.${photoExtension(photo)}`;
+		await app.vault.createBinary(`${folder}/${photoName}`, await photo.data.arrayBuffer());
+		photoNames.push(photoName);
+	}
 
 	const duration = formatTime(entry.durationMs / 1000);
 	const name = safeName(title);
@@ -49,7 +64,7 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 		`${folder}/${name} (transcript).md`,
 		frontmatter({ kind: 'transcript', entry: `[[${name}]]`, date: day, recording: recordingName, engine: entry.engine }) +
 			`> [!quote] ${t('files.transcript')}\n> ${t('files.transcriptAbout')} [[${name}|${t('files.yourStory')}]].\n\n` +
-			`![[${recordingName}]]\n\n` +
+			`${embed(folder, recordingName)}\n\n` +
 			(entry.segments.length
 				? entry.segments.map((s) => `**[${formatTime(s.start)}]** ${s.text}`).join('\n\n')
 				: entry.transcript) +
@@ -63,7 +78,7 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 			date: day,
 			time: when.format('HH:mm'),
 			// Where the entry was recorded, so times stay right after travel or a move
-			timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+			timezone: entry.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
 			duration,
 			summary: '',
 			language: entry.language,
@@ -71,13 +86,28 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 			source: 'recording',
 			status: 'transcribed',
 			recordings: [recordingName],
+			...(photoNames.length ? { photos: photoNames } : {}),
 			engine: entry.engine,
 		}) +
-			`![[${recordingName}]]\n\n` +
+			`${embed(folder, recordingName)}\n\n` +
 			`${relatedLine(name, false)}\n\n` +
-			`${entry.transcript}\n`,
+			`${entry.transcript}\n` +
+			photoBlock(folder, photoNames),
 	);
 	return main;
+}
+
+/**
+ * An embed with the full path. Every entry has a "recording.webm" and a "photo 1.jpg", so a bare
+ * ![[recording.webm]] could show another entry's file. Obsidian updates these paths on rename.
+ */
+export function embed(folder: string, file: string): string {
+	return `![[${normalizePath(`${folder}/${file}`)}]]`;
+}
+
+/** The entry's photos, shown under the story. */
+export function photoBlock(folder: string, photos: string[]): string {
+	return photos.length ? `\n${photos.map((photo) => embed(folder, photo)).join('\n')}\n` : '';
 }
 
 /** The small line of links under the audio player: Transcript · AI draft. */

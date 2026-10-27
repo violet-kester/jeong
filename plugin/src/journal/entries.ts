@@ -13,6 +13,8 @@ export interface EntryInfo {
 	summary: string;
 	/** recorded (waiting to be written up), transcribed, or written */
 	status: string;
+	/** The entry's photos, in order; the first is the main photo. */
+	photos: TFile[];
 }
 
 export function listEntries(app: App, journalFolder: string): EntryInfo[] {
@@ -30,6 +32,9 @@ export function listEntries(app: App, journalFolder: string): EntryInfo[] {
 			duration: text(fm.duration),
 			summary: text(fm.summary),
 			status: text(fm.status),
+			photos: (Array.isArray(fm.photos) ? fm.photos.map(String) : [])
+				.map((name) => app.vault.getAbstractFileByPath(normalizePath(`${file.parent?.path ?? ''}/${name}`)))
+				.filter((photo): photo is TFile => photo instanceof TFile),
 		});
 	}
 	return entries.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));

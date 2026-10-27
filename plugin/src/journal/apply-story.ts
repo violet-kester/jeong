@@ -22,11 +22,20 @@ export async function applyStory(app: App, note: TFile, composed: ComposedEntry,
 	if (draft) await app.vault.modify(draft, draftText);
 	else await app.vault.create(normalizePath(`${folder.path}/${name} (AI draft).md`), draftText);
 
+	// The recording player stays above the story; photos stay below it
+	const photos: unknown = app.metadataCache.getFileCache(note)?.frontmatter?.photos;
+	const photoNames = Array.isArray(photos) ? photos.map(String) : [];
+	const isPhoto = (line: string) => photoNames.some((photo) => line.endsWith(`/${photo}]]`) || line === `![[${photo}]]`);
 	await app.vault.process(note, (content) => {
 		const frontmatter = /^---\n[\s\S]*?\n---\n/.exec(content)?.[0] ?? '';
 		const body = content.slice(frontmatter.length);
 		const embeds = body.match(/^!\[\[[^\]]+\]\]$/gm) ?? [];
-		return `${frontmatter}\n${embeds.join('\n')}${embeds.length ? '\n\n' : ''}${relatedLine(name, true)}\n\n${composed.story}\n`;
+		const top = embeds.filter((line) => !isPhoto(line));
+		const bottom = embeds.filter(isPhoto);
+		return (
+			`${frontmatter}\n${top.join('\n')}${top.length ? '\n\n' : ''}${relatedLine(name, true)}\n\n${composed.story}\n` +
+			(bottom.length ? `\n${bottom.join('\n')}\n` : '')
+		);
 	});
 
 	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {

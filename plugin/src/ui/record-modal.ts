@@ -6,6 +6,7 @@ import { checkWebGpu } from '../diagnostics/webgpu';
 import { deleteTemp, extensionFor, saveToTemp } from '../storage/temp-file';
 import { writeEntry } from '../journal/entry-writer';
 import { saveLoosePage } from '../journal/loose-pages';
+import { PhotoTray } from './photo-tray';
 import { writeStory } from '../compose/write-story';
 import type { Ollama } from '../compose/ollama';
 import { storyMessage } from './story-messages';
@@ -51,6 +52,7 @@ export class RecordModal extends Modal {
 	private speedRow!: HTMLElement;
 	private finalRow!: HTMLElement;
 	private comparison!: HTMLElement;
+	private photos!: PhotoTray;
 
 	constructor(
 		app: App,
@@ -73,6 +75,7 @@ export class RecordModal extends Modal {
 		this.canvas = contentEl.createEl('canvas', { cls: 'jeong-record-waveform' });
 		this.transcript = contentEl.createDiv({ cls: 'jeong-transcript' });
 		this.partial = this.transcript.createSpan({ cls: 'jeong-transcript-partial' });
+		this.photos = new PhotoTray(contentEl);
 		this.comparison = contentEl.createDiv({ cls: 'jeong-comparison' });
 		this.status = contentEl.createDiv({ cls: 'jeong-record-status', text: t('record.ready') });
 		this.button = contentEl.createEl('button', { cls: 'jeong-record-button mod-cta', text: t('record.start') });
@@ -100,6 +103,7 @@ export class RecordModal extends Modal {
 		this.waveform?.stop();
 		window.cancelAnimationFrame(this.timerFrame);
 		this.recorder.release();
+		this.photos?.dispose();
 		this.moonshine?.dispose();
 		this.whisper?.dispose();
 		this.contentEl.empty();
@@ -252,6 +256,7 @@ export class RecordModal extends Modal {
 				segments: result.segments ?? [],
 				engine: `jeong-plugin ${this.metrics.version} · ${shortName(this.models.final)}`,
 				language: this.language,
+				photos: this.photoFiles(),
 			});
 			this.metrics.log({
 				event: 'entry_saved',
@@ -277,6 +282,10 @@ export class RecordModal extends Modal {
 		}
 	}
 
+	private photoFiles() {
+		return this.photos.photos.map(({ file }) => ({ name: file.name, type: file.type, data: file }));
+	}
+
 	/** On a phone: save the recording to Loose pages, to be written up on a computer later. */
 	private async saveLoose(recording: Recording): Promise<void> {
 		try {
@@ -286,6 +295,7 @@ export class RecordModal extends Modal {
 				durationMs: recording.durationMs,
 				startedAt: this.startedAt,
 				language: this.language,
+				photos: this.photoFiles(),
 			});
 			this.status.setText(t('record.savedLoose'));
 			this.button.disabled = false;

@@ -100,6 +100,24 @@ export async function composeEntry(
 	onStep('summary', summaryResult);
 	let { title, summary } = parse<{ title?: string; summary?: string }>(summaryResult.content, {});
 
+	// Small models sometimes describe the person from outside ("the narrator", "they"); ask once more for "I"
+	if (summary && /\b(the (narrator|speaker|author|user|person)|they|their|them)\b/i.test(summary)) {
+		onStep('summary');
+		const firstPerson = await ollama.chat(
+			[
+				{ role: 'system', content: SUMMARY_RULES },
+				{ role: 'user', content: story },
+				{ role: 'assistant', content: summaryResult.content },
+				{ role: 'user', content: 'Rewrite the summary as the person themselves, using "I" and "my". Keep the same title and the same facts.' },
+			],
+			{ schema: SUMMARY_SCHEMA, contextTokens },
+		);
+		onStep('summary', firstPerson);
+		const fixed = parse<{ title?: string; summary?: string }>(firstPerson.content, {});
+		summary = fixed.summary || summary;
+		title = fixed.title || title;
+	}
+
 	// The summary is checked too: if it adds anything, it's rewritten once, then flagged
 	const summaryFlags = await check(ollama, transcript, summary ?? '', contextTokens, onStep);
 	if (summaryFlags.length) {
