@@ -20,9 +20,3 @@ An open source journal you read as a timeline instead of a list.
 **Talk** by recording a quick voice note or chatting with a voice agent.<br>
 **Share privately** with encryption and only your connections.
 </div>
-
-## Development
-
-- [`plugin/`](plugin/README.md): the Jeong Obsidian plugin
-- [`styles/colors.css`](styles/colors.css): the color palette for light and dark mode
-- [`sketches/timeline.html`](sketches/timeline.html): a UI sketch of the timeline

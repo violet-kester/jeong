@@ -3,8 +3,25 @@
 export const en = {
 	'ribbon.record': 'Record a new entry',
 	'command.newEntry': 'Record a new entry',
+
 	'record.title': 'New entry',
-	'record.comingSoon': 'Recording is coming soon. This is where you will talk and watch your words appear.',
+	'record.ready': 'Press the button and start talking.',
+	'record.start': 'Start recording',
+	'record.stop': 'Stop',
+	'record.recording': 'Recording… press Stop when you’re done.',
+	'record.saving': 'Saving…',
+	'record.saved': 'Saved. This is a test recording, so it isn’t an entry yet.',
+	'record.saveFailed': 'I couldn’t save that recording. Nothing else was changed. Try again, and if it keeps happening, let us know.',
+	'record.noMicrophone': 'I can’t reach your microphone. Check that it’s plugged in and that Obsidian is allowed to use it.',
+
+	'check.webgpu': 'Graphics (WebGPU)',
+	'check.format': 'Recording format',
+	'check.saved': 'Test file',
+	'check.savedLater': 'Saving on this device comes later',
+	'check.yes': 'Available',
+	'check.no': 'Not available (will use the slower CPU path)',
+	'check.unknown': 'Unknown',
+
 	'settings.journalFolder.name': 'Journal folder',
 	'settings.journalFolder.desc': 'Where Jeong keeps your entries, inside this vault.',
 };
