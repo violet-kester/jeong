@@ -13,6 +13,7 @@ import { kleinWorkflow } from './klein-workflow';
 const SCENE_RULES = `You choose one image to paint for someone's journal entry.
 - Pick the one or two things that hold the entry's most important moment, and describe them in one or two short sentences, in English.
 - Use only things in the entry. Don't invent places, people, weather, or objects, and keep each detail true to the moment (if the rain had stopped, there is no rain).
+- Leave out any setting the entry doesn't describe: no view out of a window, no room, no landscape unless the entry mentions it.
 - Make it poetic: you may turn the moment into one quiet visual metaphor (steam becomes a river, a person becomes the weather), built only from things in the entry.
 - People are welcome when the moment is about them, as simple figures: say "someone" or "a figure", never a gender unless the entry gives one.
 - Describe only what can be seen: no feelings, no colors, no words, no letters, no signs. (It is painted in one ink.)
@@ -26,7 +27,7 @@ const COMPOSITIONS = [
 	'Seen from directly above, the subject pushed into a lower corner and cut off by the edge of the paper.',
 	'An extreme close-up fragment of the subject, enormous, cropped hard by two edges, almost abstract.',
 	'The subject very small, low in one third of the sheet, beneath a towering field of turbulent wash.',
-	'Almost entirely abstract: the air, light or weather of the moment filling the sheet, only a hint of the subject at one edge.',
+	'Almost entirely abstract: open wash and empty paper filling the sheet, only a hint of the subject at one edge.',
 	"The subject's shape echoed two or three times, drifting off-center like ripples or moons.",
 	'A violent diagonal: the subject and its shadow slicing across the sheet from corner to corner, off balance.',
 ];
@@ -34,7 +35,8 @@ const COMPOSITIONS = [
 /** Asked of every painting, whatever the style. */
 const ARTWORK =
 	'A small, striking work of art: expressive, poetic, never literal, never centered, never realistic. ' +
-	'Any people are simple, abstract figures with smooth, faceless heads, genderless unless the subject says otherwise.';
+	'Any people are simple, abstract figures with smooth, faceless heads, genderless unless the subject says otherwise. ' +
+	'Paint only what the subject mentions: no added scenery, windows, rooms, landscapes or objects; anything not described stays bare paper or abstract wash.';
 
 export type PaintProgress = 'scene' | 'painting' | 'not-ready' | 'done' | 'failed';
 
