@@ -22,6 +22,7 @@ export default class JeongPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+		this.applyTheme();
 		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, this.manifest.version);
 		this.ollama = new Ollama(() => this.settings.ollamaUrl, () => this.settings.storyModel);
 		this.loose = new LooseProcessor(this.app, () => this.settings.journalFolder, this.ollama, this.metrics, this.manifest.version);
@@ -101,12 +102,22 @@ export default class JeongPlugin extends Plugin {
 	async openTimeline() {
 		const existing = this.app.workspace.getLeavesOfType(TIMELINE_VIEW)[0];
 		const leaf = existing ?? this.app.workspace.getLeaf('tab');
-		if (!existing) await leaf.setViewState({ type: TIMELINE_VIEW, active: true });
+		await leaf.loadIfDeferred();
+		// A tab left over from before the plugin reloaded (after an update) can be empty; rebuild it
+		if (!(leaf.view instanceof TimelineView)) await leaf.setViewState({ type: TIMELINE_VIEW, active: true });
 		await this.app.workspace.revealLeaf(leaf);
+		if (leaf.view instanceof TimelineView) leaf.view.goToToday();
 	}
 
 	onunload() {
 		this.loose?.dispose();
+		document.body.removeClass('jeong-theme-light', 'jeong-theme-dark');
+	}
+
+	/** Puts Jeong's light or dark colors on every Jeong view and window, or lets them follow Obsidian. */
+	applyTheme() {
+		document.body.toggleClass('jeong-theme-light', this.settings.theme === 'light');
+		document.body.toggleClass('jeong-theme-dark', this.settings.theme === 'dark');
 	}
 
 	openRecorder() {

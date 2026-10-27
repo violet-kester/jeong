@@ -12,7 +12,11 @@ export interface JeongSettings {
 	storyModel: string;
 	/** On a computer, write up phone recordings automatically when they arrive. */
 	autoProcessLoose: boolean;
+	/** Jeong's own light or dark colors, or whatever Obsidian uses. */
+	theme: JeongTheme;
 }
+
+export type JeongTheme = 'obsidian' | 'light' | 'dark';
 
 /** hybrid: Moonshine guesses (light ink), Whisper writes each finished phrase (full ink). moonshine: Moonshine only, for slower computers. */
 export type LiveMode = 'hybrid' | 'moonshine';
@@ -23,6 +27,7 @@ export const DEFAULT_SETTINGS: JeongSettings = {
 	ollamaUrl: 'http://localhost:11434',
 	storyModel: 'granite4:tiny-h',
 	autoProcessLoose: true,
+	theme: 'obsidian',
 };
 
 export class JeongSettingTab extends PluginSettingTab {
@@ -46,6 +51,22 @@ export class JeongSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.journalFolder)
 					.onChange(async (value) => {
 						this.plugin.settings.journalFolder = normalizePath(value || DEFAULT_SETTINGS.journalFolder);
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName(t('settings.theme.name'))
+			.setDesc(t('settings.theme.desc'))
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('obsidian', t('settings.theme.obsidian'))
+					.addOption('light', t('settings.theme.light'))
+					.addOption('dark', t('settings.theme.dark'))
+					.setValue(this.plugin.settings.theme)
+					.onChange(async (value) => {
+						this.plugin.settings.theme = value === 'light' || value === 'dark' ? value : 'obsidian';
+						this.plugin.applyTheme();
 						await this.plugin.saveSettings();
 					}),
 			);

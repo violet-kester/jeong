@@ -46,6 +46,9 @@
   --pine:       #3F4B43;  /* sonamu (소나무): dark pine green */
   --celadon:    #7F9C8A;  /* cheongja (청자): celadon glaze */
   --indigo:     #34405C;  /* jjok (쪽): indigo dye */
+
+  /* Browns */
+  --walnut:     #A98A66;  /* walnut ink, brushed thin: the timeline's night on paper */
 }
 
 
@@ -75,6 +78,22 @@
   --lane-travel:       var(--persimmon);
   --lane-making:       var(--pine);
   --lane-people:       var(--celadon);
+
+  /* The timeline's day, top to bottom: cream mornings, noon at the line, a walnut night */
+  --day-morning:       #F7EEDC;
+  --day-noon:          #ECDDC2;
+  --day-night:         var(--walnut);
+  --day-sunset:        rgba(201, 103, 63, 0.14);  /* a thin sunset band in the evening */
+  --day-dusk:          rgba(42, 48, 72, 0.24);    /* indigo settling at the bottom of the night */
+
+  /* The sky ruler at the timeline's left edge, dawn to night */
+  --sky-dawn:          #E3A46A;
+  --sky-morning:       #EDCB8C;
+  --sky-noon:          #F4E2AE;
+  --sky-afternoon:     #E2B26A;
+  --sky-sunset:        #C9673F;   /* persimmon, softened */
+  --sky-dusk:          #5A5A78;
+  --sky-night:         #2A3048;   /* indigo, deepened */
 }
 
 
@@ -107,6 +126,20 @@
     --lane-travel:       #D0634A;
     --lane-making:       #7D9283;
     --lane-people:       #93B09E;
+
+    --day-morning:       #433526;
+    --day-noon:          #2C231A;
+    --day-night:         #0E0C0A;
+    --day-sunset:        rgba(162, 78, 51, 0.14);
+    --day-dusk:          rgba(40, 46, 74, 0.5);
+
+    --sky-dawn:          #A8713F;
+    --sky-morning:       #B8975A;
+    --sky-noon:          #CDB57E;
+    --sky-afternoon:     #B88446;
+    --sky-sunset:        #A24E33;
+    --sky-dusk:          #434662;
+    --sky-night:         #1E2234;
   }
 }
 
@@ -129,4 +162,18 @@
   --lane-travel:       #D0634A;
   --lane-making:       #7D9283;
   --lane-people:       #93B09E;
+
+  --day-morning:       #433526;
+  --day-noon:          #2C231A;
+  --day-night:         #0E0C0A;
+  --day-sunset:        rgba(162, 78, 51, 0.14);
+  --day-dusk:          rgba(40, 46, 74, 0.5);
+
+  --sky-dawn:          #A8713F;
+  --sky-morning:       #B8975A;
+  --sky-noon:          #CDB57E;
+  --sky-afternoon:     #B88446;
+  --sky-sunset:        #A24E33;
+  --sky-dusk:          #434662;
+  --sky-night:         #1E2234;
 }

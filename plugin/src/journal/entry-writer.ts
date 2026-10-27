@@ -98,6 +98,71 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 }
 
 /**
+ * Adds another recording to an entry ("Record more"): the audio, its words in the transcript (with times
+ * that carry on from the first recording), and any new photos. Write the story again afterwards.
+ */
+export async function addRecording(app: App, note: TFile, take: NewEntry): Promise<void> {
+	const folder = note.parent;
+	if (!folder) throw new Error('The entry has no folder');
+	const fields: Record<string, unknown> = app.metadataCache.getFileCache(note)?.frontmatter ?? {};
+	const offset = parseTime(typeof fields.duration === 'string' ? fields.duration : '0:00');
+	const stamp = moment(take.startedAt).format('YYYY-MM-DD HHmm');
+
+	const recordingName = freeName(app, folder.path, `${stamp} recording`, extensionFor(take.mimeType));
+	await app.vault.createBinary(`${folder.path}/${recordingName}`, await take.recording.arrayBuffer());
+	const photoNames: string[] = [];
+	for (const photo of take.photos ?? []) {
+		const photoName = freeName(app, folder.path, `${stamp} photo ${photoNames.length + 1}`, photoExtension(photo));
+		await app.vault.createBinary(`${folder.path}/${photoName}`, await photo.data.arrayBuffer());
+		photoNames.push(photoName);
+	}
+
+	// The transcript carries on, with this recording's player and times counted from where the last one ended
+	const transcript = folder.children.find(
+		(child): child is TFile => child instanceof TFile && app.metadataCache.getFileCache(child)?.frontmatter?.kind === 'transcript',
+	);
+	if (transcript) {
+		const words = take.segments.length
+			? take.segments.map((segment) => `**[${formatTime(offset + segment.start)}]** ${segment.text}`).join('\n\n')
+			: take.transcript;
+		await app.vault.process(transcript, (content) => `${content.trimEnd()}\n\n${embed(folder.path, recordingName)}\n\n${words}\n`);
+	}
+
+	// The entry: another player under the first, the new photos under the story
+	await app.vault.process(note, (content) => {
+		const lines = content.split('\n');
+		let last = -1;
+		lines.forEach((line, i) => {
+			if (/^!\[\[.*recording\.[a-z0-9]+\]\]$/i.test(line.trim())) last = i;
+		});
+		if (last >= 0) lines.splice(last + 1, 0, embed(folder.path, recordingName));
+		return lines.join('\n').trimEnd() + '\n' + photoBlock(folder.path, photoNames);
+	});
+	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
+		fm.recordings = [...listOf(fm.recordings), recordingName];
+		if (photoNames.length) fm.photos = [...listOf(fm.photos), ...photoNames];
+		fm.duration = formatTime(offset + take.durationMs / 1000);
+	});
+}
+
+/** A frontmatter list as names (empty if it isn't a list). */
+function listOf(value: unknown): string[] {
+	return Array.isArray(value) ? value.map(String) : [];
+}
+
+/** A file name not yet used in the folder: "name.ext", or "name 2.ext", "name 3.ext"… */
+function freeName(app: App, folder: string, name: string, extension: string): string {
+	let candidate = `${name}.${extension}`;
+	for (let n = 2; app.vault.getAbstractFileByPath(normalizePath(`${folder}/${candidate}`)); n++) candidate = `${name} ${n}.${extension}`;
+	return candidate;
+}
+
+/** "1:14" → 74 seconds; "1:02:05" → 3725. */
+function parseTime(text: string): number {
+	return text.split(':').reduce((total, part) => total * 60 + (Number(part) || 0), 0);
+}
+
+/**
  * An embed with the full path. Every entry has a "recording.webm" and a "photo 1.jpg", so a bare
  * ![[recording.webm]] could show another entry's file. Obsidian updates these paths on rename.
  */
