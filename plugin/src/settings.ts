@@ -31,12 +31,15 @@ export type JeongTheme = 'obsidian' | 'light' | 'dark';
 export type LiveMode = 'hybrid' | 'moonshine';
 
 /**
- * "Wash into mist": wet washes and a few dark marks, the forms melting into soft clouds of wash. Black ink only,
- * because the model holds to one color reliably only in black; Jeong shows it in the ink color from settings.
+ * Woodcut × Munch: an expressionist woodcut with Munch's trembling, swirling lines, strong blacks against bold
+ * whites, and faces left blank. Black ink only, because the model holds to one color reliably only in black;
+ * Jeong shows it in the ink color from settings.
  */
 export const PAINT_STYLE =
-	'Wet ink wash dissolving into mist: bleeding washes and a few dark brush marks, the forms half there, melting into pale clouds of wash. Little detail. ' +
-	'One ink only, black, on plain off-white paper. Expressive and imprecise, large areas of empty paper. No text, no letters, no signature, no borders, no frame.';
+	'Expressionist woodcut: jagged gouged lines and harsh solid shapes, raw, urgent and wild, never neat; swirling, undulating lines ' +
+	'in the spirit of Edvard Munch trembling through the whole sheet. Strong solid blacks against bold bare whites, high contrast. ' +
+	'Any face is a blank shape: no eyes, no nose, no mouth. ' +
+	'One ink only, black, on plain off-white paper. No text, no letters, no signature, no borders, no frame.';
 
 export const DEFAULT_SETTINGS: JeongSettings = {
 	journalFolder: 'spaces/jeong',
