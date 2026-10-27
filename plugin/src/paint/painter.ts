@@ -17,6 +17,22 @@ const SCENE_RULES = `You choose one image to paint for someone's journal entry.
 - Describe only what can be seen: no feelings, no colors, no words, no letters, no signs. (It is painted in one ink.)
 - Write only the description.`;
 
+/**
+ * Each painting takes one of these at random, so it's never a centered, literal picture and no two look alike:
+ * pressing Illustrate is a small surprise every time.
+ */
+const COMPOSITIONS = [
+	'Seen from directly above, the subject pushed into a lower corner and cut off by the edge of the paper.',
+	'An extreme close-up fragment of the subject, enormous, cropped hard by two edges, almost abstract.',
+	'The subject very small, low in one third of the sheet, beneath a towering field of turbulent wash.',
+	'Almost entirely abstract: the air, light or weather of the moment filling the sheet, only a hint of the subject at one edge.',
+	"The subject's shape echoed two or three times, drifting off-center like ripples or moons.",
+	'A violent diagonal: the subject and its shadow slicing across the sheet from corner to corner, off balance.',
+];
+
+/** Asked of every painting, whatever the style. */
+const ARTWORK = 'A small, striking work of art: expressive, poetic, never literal, never centered, never realistic.';
+
 export type PaintProgress = 'scene' | 'painting' | 'not-ready' | 'done' | 'failed';
 
 export interface PaintSettings {
@@ -72,7 +88,9 @@ export class Painter {
 			const scene = await this.scene(note);
 			onProgress('painting');
 			// Style first: the model pays the most attention to the start of the prompt
-			const png = await this.comfy.paint(await this.workflow(`${this.settings().paintStyle}\n\nSubject: ${scene}`));
+			const composition = COMPOSITIONS[Math.floor(Math.random() * COMPOSITIONS.length)];
+			const prompt = `${this.settings().paintStyle} ${ARTWORK}\n\nComposition: ${composition}\n\nSubject: ${scene}`;
+			const png = await this.comfy.paint(await this.workflow(prompt));
 			this.fresh.add(note.path);
 			await this.save(note, await toJpeg(png), scene);
 			onProgress('done');

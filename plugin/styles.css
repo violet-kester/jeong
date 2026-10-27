@@ -1054,6 +1054,40 @@ body {
 	margin-left: auto;
 }
 
+/* Year, Month, Week: words in the middle pill; the one shown sits on a soft wash */
+.jeong.jeong-timeline .jeong-timeline-scales button {
+	width: auto;
+	padding: 0 14px;
+	color: var(--jeong-text-muted);
+}
+
+.jeong.jeong-timeline .jeong-timeline-scales button.is-current {
+	background-color: var(--jeong-wash-strong);
+	color: var(--jeong-ink);
+}
+
+/* A month or a week's dates are longer than a year */
+.jeong-timeline-year.is-long {
+	font-size: 1.3em;
+	white-space: nowrap;
+}
+
+/* A numeral that takes you closer in (a month to that month, a day to its week) */
+.jeong-timeline-month b.is-link {
+	cursor: pointer;
+	transition: color var(--jeong-quick) var(--jeong-ease);
+}
+
+@media (hover: hover) {
+	.jeong-timeline-month b.is-link:hover {
+		color: var(--jeong-persimmon);
+	}
+}
+
+.jeong-timeline-month.is-today b {
+	color: var(--jeong-persimmon);
+}
+
 /* Inside a pill, buttons are bare icons; a soft circle shows on hover */
 .jeong.jeong-timeline .jeong-timeline-pill button {
 	width: 34px;
@@ -1232,6 +1266,22 @@ body {
 .is-mobile .jeong-timeline-bar {
 	gap: 6px;
 	padding: 10px 12px;
+	flex-wrap: wrap;
+}
+
+/* Phones: Year, Month, Week get their own row under the bar, full width and easy to tap */
+.is-mobile .jeong-timeline-scales {
+	order: 3;
+	flex-basis: 100%;
+	margin-left: 0;
+}
+
+.is-mobile .jeong.jeong-timeline .jeong-timeline-scales button {
+	flex: 1;
+}
+
+.is-mobile .jeong-timeline-year.is-long {
+	font-size: 1.05em;
 }
 
 .is-mobile .jeong.jeong-timeline .jeong-timeline-pill button {
@@ -1448,12 +1498,21 @@ body {
 	opacity: 1;
 }
 
-/* A new painting, brushed on (src/paint/brush-reveal.ts) */
+/* A new painting, brushed on (src/paint/brush-reveal.ts); on a card it takes turns with the photos like they do */
 .jeong-brush-reveal {
 	position: absolute;
 	inset: 0;
 	width: 100%;
 	height: 100%;
+}
+
+.jeong-timeline-entry-photo > .jeong-brush-reveal {
+	opacity: 0;
+	transition: opacity var(--jeong-drift) var(--jeong-ease-in-out) var(--jeong-turn-delay, 0s);
+}
+
+.jeong-timeline-entry-photo > .jeong-brush-reveal.is-shown {
+	opacity: 1;
 }
 
 /* The brush on a card without photos: quiet in the corner, clearer on hover, and moving while it paints */
@@ -1616,7 +1675,8 @@ body {
 
 .jeong-inked .jeong-painting img,
 .jeong-inked .jeong-painting svg,
-.jeong-inked img.jeong-painting {
+.jeong-inked img.jeong-painting,
+.jeong-inked svg.jeong-painting {
 	filter: url(#jeong-ink);
 }
 
@@ -1886,6 +1946,21 @@ body {
 
 .jeong-photos-item.is-main .jeong-photos-star {
 	color: var(--jeong-persimmon);
+}
+
+/* Open entry and Illustrate, side by side under the preview's summary */
+.jeong-timeline-card-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.jeong button.jeong-illustrate-button.is-painting svg {
+		transform-origin: 80% 80%;
+		animation: jeong-brush-sweep var(--jeong-drift) var(--jeong-ease-in-out) infinite alternate;
+	}
 }
 
 /* Main photo and strip on timeline cards */

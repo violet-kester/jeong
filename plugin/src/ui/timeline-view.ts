@@ -11,10 +11,11 @@ import { applyInk } from '../paint/ink';
 
 export const TIMELINE_VIEW = 'jeong-timeline';
 
-// A timeline of the journal, one year at a time, in the style of the printed-chart sketch:
-// huge month numerals, entries as small cards standing on one line, and a red line for today.
-// Hover a card for a larger preview; click to open the entry. Drag to move around; pinch,
-// Ctrl + wheel, or the − and + buttons zoom in and out of the year.
+// A timeline of the journal, a year, a month, or a week at a time, in the style of the printed-chart
+// sketch: huge numerals (months in a year, days in a month or week), entries as small cards standing on
+// one line, and a red line for now. Hover a card for a larger preview; click to open the entry. Drag to
+// move around; pinch, Ctrl + wheel, or the − and + buttons stretch the period out or squeeze it in;
+// click a month's numeral to see that month, or a day's to see its week.
 
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 92;
@@ -23,15 +24,23 @@ const CARD_GAP = 10;
 const STEM = 18; // the gap between the line and the nearest cards
 const STEM_OFFSET = 14; // how far into the card its stem sits
 const NUMERALS_HEIGHT = 170;
-const PHOTO_TURN_MS = 4500; // how long each photo shows before the next one fades in
+const PHOTO_TURN_MS = 4000; // how long each picture shows before the next one fades in
 const MAX_CARDS_PER_DAY = 8; // more than this on one day fold into "+N"
 const MIN_HEIGHT = 420; // the numerals plus a row of cards above and below the line
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 12;
+/** How wide a day is at least, in month and week views, so cards have room to stand side by side. */
+const DAY_WIDTH: Record<Scale, number> = { year: 0, month: 90, week: CARD_WIDTH + 40 };
 const PREVIEW_REST_MS = 600; // the pointer rests this long on a card before its preview shows, so passing over doesn't flash it
 
+type Scale = 'year' | 'month' | 'week';
+const SCALES: Scale[] = ['year', 'month', 'week'];
+
 export class TimelineView extends ItemView {
-	private year = new Date().getFullYear();
+	private scale: Scale = 'year';
+	/** The first day of the year, month, or week shown. */
+	private start = moment().startOf('year');
+	private scaleButtons = new Map<Scale, HTMLElement>();
 	private selected: string | null = null;
 	private scroller!: HTMLElement;
 	private track!: HTMLElement;
@@ -76,11 +85,17 @@ export class TimelineView extends ItemView {
 		setNightSky(root);
 
 		const bar = (this.bar = root.createDiv({ cls: 'jeong-timeline-bar' }));
-		// Two soft pills: the year with its arrows, and zoom with Today
+		// Soft pills: the period with its arrows; Year, Month, and Week; and zoom with Today
 		const years = bar.createDiv({ cls: 'jeong-timeline-pill' });
 		const earlier = years.createEl('button', { attr: { 'aria-label': t('timeline.earlier') } });
 		this.yearLabel = years.createDiv({ cls: 'jeong-timeline-year' });
 		const later = years.createEl('button', { attr: { 'aria-label': t('timeline.later') } });
+		const scales = bar.createDiv({ cls: 'jeong-timeline-pill jeong-timeline-scales', attr: { role: 'group', 'aria-label': t('timeline.view') } });
+		for (const scale of SCALES) {
+			const button = scales.createEl('button', { text: t(`timeline.${scale}`) });
+			button.addEventListener('click', () => this.setScale(scale));
+			this.scaleButtons.set(scale, button);
+		}
 		const views = bar.createDiv({ cls: 'jeong-timeline-pill' });
 		const zoomOut = views.createEl('button', { attr: { 'aria-label': t('timeline.zoomOut') } });
 		const zoomIn = views.createEl('button', { attr: { 'aria-label': t('timeline.zoomIn') } });
@@ -93,8 +108,8 @@ export class TimelineView extends ItemView {
 		today.createSpan({ text: t('timeline.today') });
 		zoomOut.addEventListener('click', () => this.setZoom(this.zoom / 1.6));
 		zoomIn.addEventListener('click', () => this.setZoom(this.zoom * 1.6));
-		earlier.addEventListener('click', () => this.showYear(this.year - 1));
-		later.addEventListener('click', () => this.showYear(this.year + 1));
+		earlier.addEventListener('click', () => this.showPeriod(this.start.clone().subtract(1, this.scale)));
+		later.addEventListener('click', () => this.showPeriod(this.start.clone().add(1, this.scale)));
 		today.addEventListener('click', () => this.goToToday());
 
 		this.scroller = root.createDiv({ cls: 'jeong-timeline-scroller' });
@@ -140,9 +155,9 @@ export class TimelineView extends ItemView {
 
 	private refresh = debounce(() => this.redraw(), 300, true);
 
-	/** Shows this year with today in the middle. */
+	/** Shows the year, month, or week with today in it, with now in the middle. */
 	goToToday(): void {
-		this.showYear(new Date().getFullYear(), true);
+		this.showPeriod(moment(), moment());
 		this.pendingToday = this.scroller.clientWidth === 0;
 	}
 
@@ -161,11 +176,20 @@ export class TimelineView extends ItemView {
 		this.contentEl.empty();
 	}
 
-	private showYear(year: number, scrollToToday = false): void {
-		this.year = year;
+	/** Switches between Year, Month, and Week, keeping the date in the middle of the view (or `at`) in sight. */
+	private setScale(scale: Scale, at?: moment.Moment): void {
+		const middle = at ?? this.dateAt(this.scroller.scrollLeft + this.scroller.clientWidth / 2);
+		this.scale = scale;
+		this.zoom = 1;
+		this.showPeriod(middle, middle);
+	}
+
+	/** Shows the year, month, or week that `date` falls in; `focus`, if it's in that period, goes in the middle. */
+	private showPeriod(date: moment.Moment, focus?: moment.Moment): void {
+		this.start = date.clone().startOf(this.scale);
 		this.render();
-		const now = new Date();
-		const target = scrollToToday && year === now.getFullYear() ? this.x(dayOfYear(now)) : 0;
+		const inside = focus && !focus.isBefore(this.start) && focus.isBefore(this.end());
+		const target = inside ? this.x(this.offset(focus)) : 0;
 		this.scroller.scrollLeft = Math.max(0, target - this.scroller.clientWidth / 2);
 		// The line sits a little below the middle, as on a short day, even when busy mornings push it down
 		this.scroller.scrollTop = Math.max(0, this.axisY - this.top - (this.scroller.clientHeight - this.top) * 0.56);
@@ -196,21 +220,58 @@ export class TimelineView extends ItemView {
 		});
 	}
 
-	/** Where an entry's day is on the line. */
-	private dayX(entry: EntryInfo): number {
-		return this.x(dayOfYear(new Date(`${entry.date}T12:00`)));
+	/** The day after the period shown. */
+	private end(): moment.Moment {
+		return this.start.clone().add(1, this.scale);
 	}
 
-	/** Pixels from the left edge for a day of the year. */
-	private x(day: number): number {
-		return 40 + (day / daysIn(this.year)) * (this.track.clientWidth - 80);
+	/** How many days the period shown has. */
+	private days(): number {
+		return this.end().diff(this.start, 'days');
+	}
+
+	/** Days (with fractions for the time of day) from the start of the period shown. */
+	private offset(date: moment.Moment): number {
+		return date.diff(this.start, 'days', true);
+	}
+
+	/** Where an entry's day is on the line: the middle of the day. */
+	private dayX(entry: EntryInfo): number {
+		return this.x(this.offset(moment(entry.date)) + 0.5);
+	}
+
+	/** Pixels from the left edge for a number of days into the period. */
+	private x(days: number): number {
+		return 40 + (days / this.days()) * (this.track.clientWidth - 80);
+	}
+
+	/** The date at a number of pixels from the left edge. */
+	private dateAt(x: number): moment.Moment {
+		const days = ((x - 40) / Math.max(1, this.track.clientWidth - 80)) * this.days();
+		return this.start.clone().add(Math.min(this.days() - 1, Math.max(0, Math.floor(days))), 'days');
+	}
+
+	/** The period's name in the bar: 2026, October 2026, or Oct 26 – Nov 1. */
+	private periodLabel(): string {
+		if (this.scale === 'year') return this.start.format('YYYY');
+		if (this.scale === 'month') return this.start.format(Platform.isMobile ? 'MMM YYYY' : 'MMMM YYYY');
+		const last = this.end().subtract(1, 'day');
+		return `${this.start.format('MMM D')} – ${last.format(last.month() === this.start.month() ? 'D' : 'MMM D')}`;
 	}
 
 	private render(): void {
-		const entries = listEntries(this.app, this.plugin.settings.journalFolder).filter((e) => e.date.startsWith(`${this.year}-`));
-		this.yearLabel.setText(String(this.year));
+		const from = this.start.format('YYYY-MM-DD');
+		const to = this.end().format('YYYY-MM-DD');
+		const entries = listEntries(this.app, this.plugin.settings.journalFolder).filter((e) => e.date >= from && e.date < to);
+		this.yearLabel.setText(this.periodLabel());
+		this.yearLabel.toggleClass('is-long', this.scale !== 'year');
+		this.scaleButtons.forEach((button, scale) => {
+			button.toggleClass('is-current', scale === this.scale);
+			button.setAttribute('aria-pressed', String(scale === this.scale));
+		});
 		this.track.empty();
-		this.track.style.width = `${Math.max(this.scroller.clientWidth * 2.2, 1800) * this.zoom}px`;
+		const width = this.scale === 'year' ? Math.max(this.scroller.clientWidth * 2.2, 1800) : Math.max(this.scroller.clientWidth, this.days() * DAY_WIDTH[this.scale] + 80);
+		this.track.style.width = `${width * this.zoom}px`;
 
 		// The day, top to bottom: the page goes from cream mornings to a walnut night with stars,
 		// and the sky ruler down the left edge runs from dawn to night, with noon at the line
@@ -218,26 +279,40 @@ export class TimelineView extends ItemView {
 		const stars = this.track.createDiv({ cls: 'jeong-timeline-stars' });
 		for (let i = 0; i < 3; i++) stars.createDiv({ cls: 'jeong-timeline-twinkle' });
 
-		// Month columns with huge numerals
-		for (let m = 0; m < 12; m++) {
-			const start = dayOfYear(new Date(this.year, m, 1));
-			const end = m === 11 ? daysIn(this.year) : dayOfYear(new Date(this.year, m + 1, 1));
-			const month = this.track.createDiv({ cls: 'jeong-timeline-month' });
-			month.style.left = `${this.x(start)}px`;
-			month.style.width = `${this.x(end) - this.x(start)}px`;
-			month.style.setProperty('--jeong-month-width', `${this.x(end) - this.x(start)}px`);
-			month.createEl('b', { text: String(m + 1).padStart(2, '0') });
-			month.createEl('small', { text: moment().month(m).format('MMMM') });
+		// Columns with huge numerals: the months of a year, or the days of a month or week.
+		// A numeral takes you one step closer: a month to that month, a day to its week.
+		const unit = this.scale === 'year' ? 'month' : 'day';
+		const today = moment().startOf('day');
+		for (let day = this.start.clone(); day.isBefore(this.end()); day.add(1, unit)) {
+			const left = this.x(this.offset(day));
+			const right = this.x(this.offset(day.clone().add(1, unit)));
+			const column = this.track.createDiv({ cls: `jeong-timeline-month${unit === 'day' ? ' is-day' : ''}` });
+			column.style.left = `${left}px`;
+			column.style.width = `${right - left}px`;
+			column.style.setProperty('--jeong-month-width', `${right - left}px`);
+			if (unit === 'day' && day.isSame(today)) column.addClass('is-today');
+			const numeral = column.createEl('b', { text: unit === 'month' ? day.format('MM') : day.format('D') });
+			column.createEl('small', { text: day.format(unit === 'month' ? 'MMMM' : this.scale === 'week' ? 'dddd' : 'ddd') });
+			const closer = this.scale === 'year' ? 'month' : this.scale === 'month' ? 'week' : null;
+			if (closer) {
+				const at = day.clone();
+				numeral.addClass('is-link');
+				numeral.setAttribute('role', 'button');
+				numeral.setAttribute('aria-label', unit === 'month' ? at.format('MMMM YYYY') : at.format('LL'));
+				numeral.addEventListener('click', () => {
+					if (!this.dragging.moved) this.setScale(closer, at);
+				});
+			}
 		}
 
 		const axis = this.track.createDiv({ cls: 'jeong-timeline-axis' });
 
-		// Today
-		const now = new Date();
-		if (now.getFullYear() === this.year) {
+		// Now: a red line at today, at this hour
+		const now = moment();
+		if (!now.isBefore(this.start) && now.isBefore(this.end())) {
 			const line = this.track.createDiv({ cls: 'jeong-timeline-now' });
-			line.style.left = `${this.x(dayOfYear(now))}px`;
-			line.createSpan({ text: `${t('timeline.today')} · ${moment(now).format('ll')}` });
+			line.style.left = `${this.x(this.offset(now))}px`;
+			line.createSpan({ text: `${t('timeline.today')} · ${now.format('ll')}` });
 		}
 
 		// Entries as small cards standing on the line, each with a stem to its day.
@@ -319,23 +394,25 @@ export class TimelineView extends ItemView {
 		if (entry.status === 'recorded') snippet.setText(t('timeline.waiting'));
 		else if (entry.summary) snippet.setText(entry.summary);
 		else void this.excerpt(entry).then((excerpt) => snippet.setText(excerpt));
-		// The photos, large, under the summary; with more than one, they take turns
-		if (entry.photos.length) {
-			const photos = card.createDiv({ cls: 'jeong-timeline-entry-photo' });
+		// The pictures, large, under the summary: the painting first, then the photos, taking turns
+		if (entry.painting || entry.photos.length) {
+			const pictures = card.createDiv({ cls: 'jeong-timeline-entry-photo' });
 			// Each card turns at a slightly different moment, so they don't all change at once
-			photos.style.setProperty('--jeong-turn-delay', `${(Math.random() * 1.4).toFixed(2)}s`);
+			pictures.style.setProperty('--jeong-turn-delay', `${(Math.random() * 1.4).toFixed(2)}s`);
+			if (entry.painting) {
+				const src = this.app.vault.getResourcePath(entry.painting);
+				// One just finished is brushed onto the card
+				if (this.plugin.painter.takeFresh(entry.file)) {
+					brushReveal(pictures, src);
+					pictures.lastElementChild?.addClass('is-shown', 'jeong-painting');
+				} else pictures.createEl('img', { cls: 'is-shown jeong-painting', attr: { src, alt: '' } });
+			}
 			entry.photos.forEach((photo, i) =>
-				photos.createEl('img', { cls: i === 0 ? 'is-shown' : '', attr: { src: this.app.vault.getResourcePath(photo), alt: '' } }),
+				pictures.createEl('img', { cls: i === 0 && !entry.painting ? 'is-shown' : '', attr: { src: this.app.vault.getResourcePath(photo), alt: '' } }),
 			);
-		} else if (entry.painting) {
-			// A painting in place of a photo; one just finished is brushed onto the card
-			const painting = card.createDiv({ cls: 'jeong-timeline-entry-photo jeong-painting' });
-			const src = this.app.vault.getResourcePath(entry.painting);
-			if (this.plugin.painter.takeFresh(entry.file)) brushReveal(painting, src);
-			else painting.createEl('img', { cls: 'is-shown', attr: { src, alt: '' } });
 		}
-		// No photos: a brush to paint a picture (on a computer, where the painting model runs)
-		if (!entry.photos.length && entry.status !== 'recorded' && !Platform.isMobile) this.brushButton(card, entry);
+		// A brush to illustrate the entry (on a computer, where the painting model runs)
+		if (this.canIllustrate(entry)) this.brushButton(card, entry);
 
 		// Mouse: hover for a larger preview, click to open. Touch: tap for the preview.
 		card.addEventListener('pointerenter', (e) => {
@@ -358,7 +435,26 @@ export class TimelineView extends ItemView {
 		});
 	}
 
-	/** The brush in the corner of a card without photos: paints a picture for it, or paints it again. */
+	/** Any written entry can be illustrated, with or without photos; only on a computer. */
+	private canIllustrate(entry: EntryInfo): boolean {
+		return entry.status !== 'recorded' && !Platform.isMobile;
+	}
+
+	/** Paints a picture for the entry; when it's done, an open preview of it shows the painting. */
+	private illustrate(entry: EntryInfo): void {
+		if (this.plugin.painter.isPainting(entry.file)) return;
+		void this.plugin.painter
+			.paint(entry.file, (progress) => {
+				if (progress === 'not-ready' || progress === 'failed') new Notice(paintMessage(progress));
+			})
+			.then((done) => {
+				if (!done || this.selected !== entry.file.path || !this.preview.isShown()) return;
+				const updated = listEntries(this.app, this.plugin.settings.journalFolder).find((e) => e.file === entry.file);
+				if (updated) void this.showPreview(updated);
+			});
+	}
+
+	/** The brush in the corner of a card: illustrates the entry, or illustrates it again. */
 	private brushButton(card: HTMLElement, entry: EntryInfo): void {
 		const painting = this.plugin.painter.isPainting(entry.file);
 		const brush = card.createEl('button', {
@@ -369,10 +465,7 @@ export class TimelineView extends ItemView {
 		if (painting) card.addClass('is-painting');
 		brush.addEventListener('click', (e) => {
 			e.stopPropagation();
-			if (this.dragging.moved || this.plugin.painter.isPainting(entry.file)) return;
-			void this.plugin.painter.paint(entry.file, (progress) => {
-				if (progress === 'not-ready' || progress === 'failed') new Notice(paintMessage(progress));
-			});
+			if (!this.dragging.moved) this.illustrate(entry);
 		});
 	}
 
@@ -406,7 +499,7 @@ export class TimelineView extends ItemView {
 		await this.app.workspace.getLeaf(false).openFile(entry.file);
 	}
 
-	/** The larger preview: bigger photo, the strip of others, the full summary, and Open entry. */
+	/** The larger preview: the painting or first photo, the strip of other photos, the full summary, Open entry, and Illustrate. */
 	private async showPreview(entry: EntryInfo): Promise<void> {
 		this.selected = entry.file.path;
 		this.track.querySelectorAll('.jeong-timeline-entry.is-selected').forEach((el) => el.removeClass('is-selected'));
@@ -417,22 +510,42 @@ export class TimelineView extends ItemView {
 		const meta = [moment(`${entry.date} ${entry.time || '12:00'}`).format(entry.time ? 'LLLL' : 'LL'), entry.duration]
 			.filter(Boolean)
 			.join(' · ');
-		if (entry.photos.length) {
-			const [main, ...rest] = entry.photos;
-			if (main) card.createEl('img', { cls: 'jeong-timeline-card-photo', attr: { src: this.app.vault.getResourcePath(main), alt: '' } });
-			if (rest.length) {
-				const strip = card.createDiv({ cls: 'jeong-timeline-card-strip' });
-				for (const photo of rest.slice(0, 4)) strip.createEl('img', { attr: { src: this.app.vault.getResourcePath(photo), alt: '' } });
-				if (rest.length > 4) strip.createSpan({ cls: 'jeong-timeline-card-more', text: `+${rest.length - 4}` });
-			}
-		} else if (entry.painting) {
-			card.createEl('img', { cls: 'jeong-timeline-card-photo jeong-painting', attr: { src: this.app.vault.getResourcePath(entry.painting), alt: '' } });
+		// The painting leads; the photos follow in the strip
+		const rest = entry.painting ? entry.photos : entry.photos.slice(1);
+		const main = entry.painting ?? entry.photos[0];
+		if (main) {
+			card.createEl('img', {
+				cls: `jeong-timeline-card-photo${entry.painting ? ' jeong-painting' : ''}`,
+				attr: { src: this.app.vault.getResourcePath(main), alt: '' },
+			});
+		}
+		if (rest.length) {
+			const strip = card.createDiv({ cls: 'jeong-timeline-card-strip' });
+			for (const photo of rest.slice(0, 4)) strip.createEl('img', { attr: { src: this.app.vault.getResourcePath(photo), alt: '' } });
+			if (rest.length > 4) strip.createSpan({ cls: 'jeong-timeline-card-more', text: `+${rest.length - 4}` });
 		}
 		card.createDiv({ cls: 'jeong-timeline-card-meta', text: meta });
 		card.createEl('h2', { text: entry.title });
 		const excerpt = entry.status === 'recorded' ? t('timeline.waiting') : entry.summary || (await this.excerpt(entry));
 		if (excerpt) card.createEl('p', { text: excerpt });
-		openButtonPill(card, () => void this.openEntry(entry));
+		const actions = card.createDiv({ cls: 'jeong-timeline-card-actions' });
+		openButtonPill(actions, () => void this.openEntry(entry));
+		if (this.canIllustrate(entry)) this.illustrateButton(actions, entry);
+	}
+
+	/** Illustrate, beside Open entry in the preview. */
+	private illustrateButton(parent: HTMLElement, entry: EntryInfo): void {
+		const painting = this.plugin.painter.isPainting(entry.file);
+		const button = parent.createEl('button', { cls: `jeong-open-button is-pill jeong-illustrate-button${painting ? ' is-painting' : ''}` });
+		setIcon(button.createSpan({ cls: 'jeong-open-button-icon' }), 'paintbrush');
+		const label = button.createSpan({ text: t(painting ? 'paint.painting' : entry.painting ? 'paint.illustrateAgain' : 'paint.illustrate') });
+		button.disabled = painting;
+		button.addEventListener('click', () => {
+			button.disabled = true;
+			button.addClass('is-painting');
+			label.setText(t('paint.painting'));
+			this.illustrate(entry);
+		});
 	}
 
 	/** The first couple of sentences of the entry, without frontmatter, labels, links line, or embeds. */
@@ -532,10 +645,3 @@ function timeOf(entry: EntryInfo): string {
 	return entry.time || '12:00';
 }
 
-function dayOfYear(date: Date): number {
-	return (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 1)) / 86_400_000;
-}
-
-function daysIn(year: number): number {
-	return dayOfYear(new Date(year, 11, 31)) + 1;
-}

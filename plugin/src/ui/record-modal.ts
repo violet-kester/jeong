@@ -556,8 +556,8 @@ export class RecordModal extends Modal {
 		this.setButton(false);
 		arrive(this.openAction);
 		window.requestAnimationFrame(() => this.horizon?.draw());
-		// No photos: Illustrate, right under where they'd be (once; Record more keeps the same one)
-		if (this.side && !this.photosSaved && !this.side.querySelector('.jeong-entry-painting')) this.illustration(this.side, note);
+		// Illustrate, under the photos (once; Record more keeps the same one)
+		if (this.side && !this.side.querySelector('.jeong-entry-painting')) this.illustration(this.side, note);
 	}
 
 	/** Opens the story pane beside the page (or clears it for a new story), saying it's being written. */
@@ -593,7 +593,7 @@ export class RecordModal extends Modal {
 	}
 
 	/**
-	 * In the left column, once an entry without photos is saved: Illustrate paints a picture for it, on this
+	 * In the left column, once the entry is saved: Illustrate paints a picture for it, on this
 	 * computer, and brushes it in. An entry that already has a painting shows it, and Illustrate paints it again.
 	 */
 	private illustration(column: HTMLElement, note: TFile): void {
