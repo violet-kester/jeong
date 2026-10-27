@@ -1,10 +1,13 @@
-import { ItemView, Platform, WorkspaceLeaf, debounce, moment, setIcon } from 'obsidian';
+import { ItemView, Notice, Platform, WorkspaceLeaf, debounce, moment, setIcon } from 'obsidian';
 import type JeongPlugin from '../main';
 import { t } from '../i18n';
 import { listEntries, type EntryInfo } from '../journal/entries';
 import { setNightSky } from './night-sky';
 import { arrive, leave } from './motion';
 import { openButtonPill } from './open-button';
+import { paintMessage } from './story-messages';
+import { brushReveal } from '../paint/brush-reveal';
+import { applyInk } from '../paint/ink';
 
 export const TIMELINE_VIEW = 'jeong-timeline';
 
@@ -15,7 +18,7 @@ export const TIMELINE_VIEW = 'jeong-timeline';
 
 const CARD_WIDTH = 220;
 const CARD_HEIGHT = 92;
-const PHOTO_HEIGHT = 132; // the main photo, full width under the summary
+const PHOTO_HEIGHT = 132; // the main photo (or painting), full width under the summary
 const CARD_GAP = 10;
 const STEM = 18; // the gap between the line and the nearest cards
 const STEM_OFFSET = 14; // how far into the card its stem sits
@@ -116,8 +119,18 @@ export class TimelineView extends ItemView {
 		this.registerEvent(this.app.metadataCache.on('changed', this.refresh));
 		this.registerEvent(this.app.vault.on('delete', this.refresh));
 		this.registerEvent(this.app.vault.on('rename', this.refresh));
+		// A card shows its brush moving while its picture is painted
+		this.register(this.plugin.painter.onChange(this.refresh));
+		// The paper behind a painting is the card's color, which changes with the theme
+		this.registerEvent(this.app.workspace.on('css-change', () => this.applyInk()));
+		this.applyInk();
 
 		this.goToToday();
+	}
+
+	/** Shows paintings in the ink color from settings. */
+	applyInk(): void {
+		applyInk(this.contentEl, this.plugin.settings.paintInk);
 	}
 
 	// Redraw when the pane changes size, including when it first gets one (a new pane can open at 0 height)
@@ -306,7 +319,6 @@ export class TimelineView extends ItemView {
 		if (entry.status === 'recorded') snippet.setText(t('timeline.waiting'));
 		else if (entry.summary) snippet.setText(entry.summary);
 		else void this.excerpt(entry).then((excerpt) => snippet.setText(excerpt));
-		// The main photo, large, under the summary
 		// The photos, large, under the summary; with more than one, they take turns
 		if (entry.photos.length) {
 			const photos = card.createDiv({ cls: 'jeong-timeline-entry-photo' });
@@ -315,7 +327,15 @@ export class TimelineView extends ItemView {
 			entry.photos.forEach((photo, i) =>
 				photos.createEl('img', { cls: i === 0 ? 'is-shown' : '', attr: { src: this.app.vault.getResourcePath(photo), alt: '' } }),
 			);
+		} else if (entry.painting) {
+			// A painting in place of a photo; one just finished is brushed onto the card
+			const painting = card.createDiv({ cls: 'jeong-timeline-entry-photo jeong-painting' });
+			const src = this.app.vault.getResourcePath(entry.painting);
+			if (this.plugin.painter.takeFresh(entry.file)) brushReveal(painting, src);
+			else painting.createEl('img', { cls: 'is-shown', attr: { src, alt: '' } });
 		}
+		// No photos: a brush to paint a picture (on a computer, where the painting model runs)
+		if (!entry.photos.length && entry.status !== 'recorded' && !Platform.isMobile) this.brushButton(card, entry);
 
 		// Mouse: hover for a larger preview, click to open. Touch: tap for the preview.
 		card.addEventListener('pointerenter', (e) => {
@@ -335,6 +355,24 @@ export class TimelineView extends ItemView {
 		});
 		card.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') void this.openEntry(entry);
+		});
+	}
+
+	/** The brush in the corner of a card without photos: paints a picture for it, or paints it again. */
+	private brushButton(card: HTMLElement, entry: EntryInfo): void {
+		const painting = this.plugin.painter.isPainting(entry.file);
+		const brush = card.createEl('button', {
+			cls: `jeong-timeline-brush${painting ? ' is-painting' : ''}`,
+			attr: { 'aria-label': painting ? t('paint.painting') : t(entry.painting ? 'paint.again' : 'paint.button') },
+		});
+		setIcon(brush, 'paintbrush');
+		if (painting) card.addClass('is-painting');
+		brush.addEventListener('click', (e) => {
+			e.stopPropagation();
+			if (this.dragging.moved || this.plugin.painter.isPainting(entry.file)) return;
+			void this.plugin.painter.paint(entry.file, (progress) => {
+				if (progress === 'not-ready' || progress === 'failed') new Notice(paintMessage(progress));
+			});
 		});
 	}
 
@@ -387,6 +425,8 @@ export class TimelineView extends ItemView {
 				for (const photo of rest.slice(0, 4)) strip.createEl('img', { attr: { src: this.app.vault.getResourcePath(photo), alt: '' } });
 				if (rest.length > 4) strip.createSpan({ cls: 'jeong-timeline-card-more', text: `+${rest.length - 4}` });
 			}
+		} else if (entry.painting) {
+			card.createEl('img', { cls: 'jeong-timeline-card-photo jeong-painting', attr: { src: this.app.vault.getResourcePath(entry.painting), alt: '' } });
 		}
 		card.createDiv({ cls: 'jeong-timeline-card-meta', text: meta });
 		card.createEl('h2', { text: entry.title });
@@ -469,13 +509,13 @@ interface StackedCard {
 
 /**
  * Stacks cards away from the line in the order given. Each card takes the first gap, nearest the line,
- * that's tall enough for it among the cards it would overlap; cards with photos are taller.
+ * that's tall enough for it among the cards it would overlap; cards with photos or a painting are taller.
  */
 function stack(entries: EntryInfo[], dayX: (entry: EntryInfo) => number): StackedCard[] {
 	const placed: StackedCard[] = [];
 	for (const entry of entries) {
 		const x = dayX(entry);
-		const height = CARD_HEIGHT + (entry.photos.length ? PHOTO_HEIGHT : 0);
+		const height = CARD_HEIGHT + (entry.photos.length || entry.painting ? PHOTO_HEIGHT : 0);
 		const inTheWay = placed.filter((card) => Math.abs(card.x - x) < CARD_WIDTH + CARD_GAP).sort((a, b) => a.offset - b.offset);
 		let offset = 0;
 		for (const card of inTheWay) {

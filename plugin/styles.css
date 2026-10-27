@@ -1448,6 +1448,183 @@ body {
 	opacity: 1;
 }
 
+/* A new painting, brushed on (src/paint/brush-reveal.ts) */
+.jeong-brush-reveal {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+
+/* The brush on a card without photos: quiet in the corner, clearer on hover, and moving while it paints */
+.jeong .jeong-timeline-entry button.jeong-timeline-brush {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	display: grid;
+	place-items: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	box-shadow: none;
+	color: var(--jeong-text-muted);
+	opacity: 0;
+	cursor: pointer;
+	transition: opacity var(--jeong-quick) var(--jeong-ease), color var(--jeong-quick) var(--jeong-ease), background-color var(--jeong-quick) var(--jeong-ease);
+}
+
+.jeong-timeline-brush svg {
+	width: 15px;
+	height: 15px;
+}
+
+.jeong-timeline-entry:hover .jeong-timeline-brush,
+.jeong-timeline-entry:focus-within .jeong-timeline-brush,
+.jeong-timeline-brush.is-painting {
+	opacity: 1;
+}
+
+.jeong .jeong-timeline-entry button.jeong-timeline-brush:hover {
+	color: var(--jeong-persimmon);
+	background-color: var(--background-modifier-hover);
+}
+
+.jeong .jeong-timeline-entry button.jeong-timeline-brush.is-painting {
+	color: var(--jeong-persimmon);
+	cursor: default;
+}
+
+/* While it paints: the brush sweeps back and forth, and a wash of ink breathes across the card */
+.jeong-timeline-entry.is-painting::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--jeong-ink) 7%, transparent) 50%, transparent 80%);
+	background-size: 250% 100%;
+	pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.jeong-timeline-brush.is-painting svg {
+		transform-origin: 80% 80%;
+		animation: jeong-brush-sweep var(--jeong-drift) var(--jeong-ease-in-out) infinite alternate;
+	}
+
+	.jeong-timeline-entry.is-painting::after {
+		animation: jeong-ink-wash calc(var(--jeong-drift) * 1.5) var(--jeong-ease-in-out) infinite alternate;
+	}
+}
+
+@keyframes jeong-brush-sweep {
+	from {
+		transform: rotate(-14deg) translateX(-2px);
+	}
+	to {
+		transform: rotate(10deg) translateX(2px);
+	}
+}
+
+@keyframes jeong-ink-wash {
+	from {
+		background-position: 100% 0;
+	}
+	to {
+		background-position: 0 0;
+	}
+}
+
+/* The date line leaves room for the brush */
+.jeong-timeline-entry:has(.jeong-timeline-brush) .jeong-timeline-entry-meta {
+	padding-right: 24px;
+}
+
+/* Illustrate, in the recording window's left column once an entry without photos is saved */
+.jeong-entry-painting {
+	position: relative;
+	display: grid;
+	justify-items: start;
+	gap: 10px;
+	margin-top: 14px;
+}
+
+.jeong-entry-painting-frame {
+	position: relative;
+	width: 100%;
+	aspect-ratio: 5 / 3;
+	max-height: 0;
+	border-radius: 6px;
+	overflow: hidden;
+	transition: max-height var(--jeong-gentle) var(--jeong-ease);
+}
+
+.jeong-entry-painting-frame.is-open {
+	max-height: 360px;
+}
+
+.jeong-entry-painting-frame img,
+.jeong-entry-painting-frame svg {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.jeong .jeong-entry-painting button.jeong-entry-illustrate {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 12px 5px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: transparent;
+	box-shadow: none;
+	color: var(--jeong-ink);
+	font-family: var(--jeong-mono);
+	font-size: 0.78em;
+	cursor: pointer;
+	transition: color var(--jeong-quick) var(--jeong-ease), border-color var(--jeong-quick) var(--jeong-ease);
+}
+
+.jeong .jeong-entry-painting button.jeong-entry-illustrate:hover,
+.jeong .jeong-entry-painting button.jeong-entry-illustrate.is-painting {
+	color: var(--jeong-persimmon);
+	border-color: var(--jeong-persimmon);
+}
+
+.jeong-entry-illustrate-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.jeong-entry-illustrate.is-painting .jeong-entry-illustrate-icon svg {
+		transform-origin: 80% 80%;
+		animation: jeong-brush-sweep var(--jeong-drift) var(--jeong-ease-in-out) infinite alternate;
+	}
+}
+
+/* Paintings are black ink, shown in one ink color by an SVG filter (src/paint/ink.ts) */
+.jeong-ink-defs {
+	position: absolute;
+	width: 0;
+	height: 0;
+}
+
+.jeong-inked .jeong-painting img,
+.jeong-inked .jeong-painting svg,
+.jeong-inked img.jeong-painting {
+	filter: url(#jeong-ink);
+}
+
+.jeong-settings-wide {
+	width: 100%;
+	min-width: 260px;
+}
+
 .jeong-timeline-entry-text {
 	display: grid;
 	align-content: start;

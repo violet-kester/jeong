@@ -11,6 +11,7 @@ import { RecordModal } from '../src/ui/record-modal';
 import { DEFAULT_SETTINGS, type JeongSettings } from '../src/settings';
 import { Metrics } from '../src/metrics/metrics';
 import { Ollama } from '../src/compose/ollama';
+import { Painter } from '../src/paint/painter';
 import mark from '../../jeong-logo-card.svg';
 
 declare const JEONG_DEMO: boolean;
@@ -79,10 +80,13 @@ async function open(handle: FileSystemDirectoryHandle, name: string): Promise<vo
 		() => settings.ollamaUrl,
 		() => settings.storyModel,
 	);
+	const painter = new Painter(app, ollama, metrics, () => settings);
 	const plugin = {
 		app,
 		settings,
-		openRecorder: () => new RecordModal(app, metrics, { liveMode: settings.liveMode, journalFolder: settings.journalFolder, ollama }).open(),
+		painter,
+		openRecorder: () =>
+			new RecordModal(app, metrics, { liveMode: settings.liveMode, journalFolder: settings.journalFolder, ollama, painter, paintInk: settings.paintInk }).open(),
 	};
 
 	const view = new TimelineView(new WorkspaceLeaf(), plugin as never);
@@ -124,6 +128,8 @@ function addThemeToggle(view: TimelineView, settings: JeongSettings): void {
 		document.body.toggleClass('jeong-theme-light', theme === 'light');
 		document.body.toggleClass('jeong-theme-dark', theme === 'dark');
 		const dark = isDark();
+		// Paintings sit on the card's paper, which just changed color
+		view.applyInk();
 		setIcon(button, dark ? 'sun' : 'moon');
 		button.setAttribute('aria-label', dark ? 'Light theme' : 'Dark theme');
 	};

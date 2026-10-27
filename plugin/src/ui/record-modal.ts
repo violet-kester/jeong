@@ -11,13 +11,16 @@ import { PhotoTray } from './photo-tray';
 import { openButtonRound } from './open-button';
 import { writeStory } from '../compose/write-story';
 import type { Ollama } from '../compose/ollama';
-import { storyMessage } from './story-messages';
+import { paintMessage, storyMessage } from './story-messages';
 import { LiveTranscriber } from '../transcribe/live-transcriber';
 import { transcribeRecording } from '../transcribe/final-transcriber';
 import { SpeechEngine, type EngineEvents, type Transcript } from '../transcribe/speech-engine';
 import type { Metrics } from '../metrics/metrics';
 import { TEST_SCRIPT, wordErrorRate } from '../metrics/word-error-rate';
 import type { LiveMode } from '../settings';
+import type { Painter } from '../paint/painter';
+import { applyInk, type InkName } from '../paint/ink';
+import { brushReveal } from '../paint/brush-reveal';
 
 export interface RecordModalOptions {
 	/** How the live transcript is written. */
@@ -28,6 +31,9 @@ export interface RecordModalOptions {
 	ollama: Ollama;
 	/** Show the test script and score both transcripts against it. */
 	test?: boolean;
+	/** Paints a picture for an entry without photos (on a computer), shown in `paintInk`. */
+	painter?: Painter;
+	paintInk?: InkName;
 }
 
 // The recording window, laid out like a letter: the date and photos down the left, and on the right
@@ -72,6 +78,8 @@ export class RecordModal extends Modal {
 	private title: HTMLElement | null = null;
 	private totalMs = 0;
 	private photosSaved = 0;
+	/** The left column: the date, then the photos, then (once saved, without photos) Illustrate. */
+	private side: HTMLElement | null = null;
 	private photos!: PhotoTray;
 
 	constructor(
@@ -97,7 +105,7 @@ export class RecordModal extends Modal {
 		}
 
 		// Left: the date, like the top of a letter, and the photos
-		const side = contentEl.createDiv({ cls: 'jeong-entry-side' });
+		const side = (this.side = contentEl.createDiv({ cls: 'jeong-entry-side' }));
 		side.createDiv({ cls: 'jeong-entry-day', text: now.format('D') });
 		side.createDiv({ cls: 'jeong-entry-month', text: now.format('MMMM') });
 		side.createDiv({ cls: 'jeong-entry-when', text: now.format('dddd · LT') });
@@ -548,6 +556,8 @@ export class RecordModal extends Modal {
 		this.setButton(false);
 		arrive(this.openAction);
 		window.requestAnimationFrame(() => this.horizon?.draw());
+		// No photos: Illustrate, right under where they'd be (once; Record more keeps the same one)
+		if (this.side && !this.photosSaved && !this.side.querySelector('.jeong-entry-painting')) this.illustration(this.side, note);
 	}
 
 	/** Opens the story pane beside the page (or clears it for a new story), saying it's being written. */
@@ -580,6 +590,58 @@ export class RecordModal extends Modal {
 		for (const paragraph of storyText(content).split(/\n\s*\n/)) {
 			if (paragraph.trim()) body.createEl('p', { text: paragraph.trim() });
 		}
+	}
+
+	/**
+	 * In the left column, once an entry without photos is saved: Illustrate paints a picture for it, on this
+	 * computer, and brushes it in. An entry that already has a painting shows it, and Illustrate paints it again.
+	 */
+	private illustration(column: HTMLElement, note: TFile): void {
+		const painter = this.options.painter;
+		if (!painter || Platform.isMobile) return;
+		applyInk(column, this.options.paintInk ?? 'black');
+		const art = column.createDiv({ cls: 'jeong-entry-painting' });
+		arrive(art);
+		const frame = art.createDiv({ cls: 'jeong-entry-painting-frame jeong-painting' });
+		const brush = art.createEl('button', { cls: 'jeong-entry-illustrate' });
+		setIcon(brush.createSpan({ cls: 'jeong-entry-illustrate-icon' }), 'paintbrush');
+		const label = brush.createSpan({ text: t('paint.illustrate') });
+
+		const painted = () => {
+			const name: unknown = this.app.metadataCache.getFileCache(note)?.frontmatter?.painting;
+			const file = typeof name === 'string' && note.parent ? this.app.vault.getAbstractFileByPath(`${note.parent.path}/${name}`) : null;
+			return file instanceof TFile ? file : null;
+		};
+		const existing = painted();
+		if (existing) {
+			frame.addClass('is-open');
+			frame.createEl('img', { attr: { src: this.app.vault.getResourcePath(existing), alt: '' } });
+			label.setText(t('paint.illustrateAgain'));
+		}
+
+		brush.addEventListener('click', () => {
+			if (painter.isPainting(note)) return;
+			brush.disabled = true;
+			brush.addClass('is-painting');
+			label.setText(t('paint.painting'));
+			art.addClass('is-painting');
+			void painter
+				.paint(note, (progress) => this.status.setText(paintMessage(progress)))
+				.then((done) => {
+					art.removeClass('is-painting');
+					brush.removeClass('is-painting');
+					brush.disabled = false;
+					const file = done ? painted() : null;
+					label.setText(t(file || existing ? 'paint.illustrateAgain' : 'paint.illustrate'));
+					if (!file) return;
+					// Shown here, so the timeline behind doesn't brush it in a second time
+					painter.takeFresh(note);
+					frame.empty();
+					frame.addClass('is-open');
+					// The frame opens first; the strokes start once it has its size
+					window.setTimeout(() => brushReveal(frame, this.app.vault.getResourcePath(file)), 560);
+				});
+		});
 	}
 
 	/** The title settles in at the top of the page, above "Saved to your journal". */

@@ -155,22 +155,23 @@ export class Notice {
 	hide(): void {}
 }
 
-/** Obsidian's requestUrl, as a fetch. Jeong only uses it for Ollama, on this computer. */
-export async function requestUrl(request: { url: string; method?: string; contentType?: string; body?: string; headers?: Record<string, string> }) {
+/** Obsidian's requestUrl, as a fetch. Jeong only uses it for Ollama and ComfyUI, on this computer. */
+export async function requestUrl(request: { url: string; method?: string; contentType?: string; body?: string; headers?: Record<string, string>; throw?: boolean }) {
 	const response = await fetch(request.url, {
 		method: request.method ?? 'GET',
 		headers: { ...(request.contentType ? { 'Content-Type': request.contentType } : {}), ...(request.headers ?? {}) },
 		body: request.body,
 	});
-	const text = await response.text();
-	if (!response.ok) throw new Error(`Request failed, status ${response.status}`);
+	const arrayBuffer = await response.arrayBuffer();
+	const text = new TextDecoder().decode(arrayBuffer);
+	if (!response.ok && request.throw !== false) throw new Error(`Request failed, status ${response.status}`);
 	let json: unknown = null;
 	try {
 		json = JSON.parse(text);
 	} catch {
 		// Not JSON
 	}
-	return { status: response.status, text, json };
+	return { status: response.status, text, json, arrayBuffer };
 }
 
 // ---- Files ----

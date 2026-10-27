@@ -151,7 +151,7 @@ function listOf(value: unknown): string[] {
 }
 
 /** A file name not yet used in the folder: "name.ext", or "name 2.ext", "name 3.ext"… */
-function freeName(app: App, folder: string, name: string, extension: string): string {
+export function freeName(app: App, folder: string, name: string, extension: string): string {
 	let candidate = `${name}.${extension}`;
 	for (let n = 2; app.vault.getAbstractFileByPath(normalizePath(`${folder}/${candidate}`)); n++) candidate = `${name} ${n}.${extension}`;
 	return candidate;

@@ -15,6 +15,8 @@ export interface EntryInfo {
 	status: string;
 	/** The entry's photos, in order; the first is the main photo. */
 	photos: TFile[];
+	/** A picture Jeong painted for an entry without photos (frontmatter: painting). */
+	painting: TFile | null;
 }
 
 export function listEntries(app: App, journalFolder: string): EntryInfo[] {
@@ -24,6 +26,7 @@ export function listEntries(app: App, journalFolder: string): EntryInfo[] {
 		if (!file.path.startsWith(prefix)) continue;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm || typeof fm.date !== 'string' || !('visibility' in fm)) continue;
+		const painting = typeof fm.painting === 'string' ? app.vault.getAbstractFileByPath(normalizePath(`${file.parent?.path ?? ''}/${fm.painting}`)) : null;
 		entries.push({
 			file,
 			title: text(fm.title) || file.basename,
@@ -35,6 +38,7 @@ export function listEntries(app: App, journalFolder: string): EntryInfo[] {
 			photos: (Array.isArray(fm.photos) ? fm.photos.map(String) : [])
 				.map((name) => app.vault.getAbstractFileByPath(normalizePath(`${file.parent?.path ?? ''}/${name}`)))
 				.filter((photo): photo is TFile => photo instanceof TFile),
+			painting: painting instanceof TFile ? painting : null,
 		});
 	}
 	return entries.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));

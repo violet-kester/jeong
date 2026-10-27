@@ -2,12 +2,13 @@ import { Notice, Platform, Plugin, TFile } from 'obsidian';
 import { LooseProcessor } from './journal/process-loose';
 import { Ollama } from './compose/ollama';
 import { writeStory } from './compose/write-story';
-import { storyMessage } from './ui/story-messages';
+import { paintMessage, storyMessage } from './ui/story-messages';
 import { TIMELINE_VIEW, TimelineView } from './ui/timeline-view';
 import { DEFAULT_SETTINGS, JeongSettings, JeongSettingTab } from './settings';
 import { RecordModal } from './ui/record-modal';
 import { PerformanceModal } from './ui/performance-modal';
 import { Metrics } from './metrics/metrics';
+import { Painter } from './paint/painter';
 import { t } from './i18n';
 
 /**
@@ -19,12 +20,14 @@ export default class JeongPlugin extends Plugin {
 	metrics!: Metrics;
 	ollama!: Ollama;
 	loose!: LooseProcessor;
+	painter!: Painter;
 
 	async onload() {
 		await this.loadSettings();
 		this.applyTheme();
 		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, this.manifest.version);
 		this.ollama = new Ollama(() => this.settings.ollamaUrl, () => this.settings.storyModel);
+		this.painter = new Painter(this.app, this.ollama, this.metrics, () => this.settings);
 		this.loose = new LooseProcessor(this.app, () => this.settings.journalFolder, this.ollama, this.metrics, this.manifest.version);
 
 		this.registerView(TIMELINE_VIEW, (leaf) => new TimelineView(leaf, this));
@@ -51,6 +54,18 @@ export default class JeongPlugin extends Plugin {
 				const note = this.app.workspace.getActiveFile();
 				if (!note || !this.isEntry(note)) return false;
 				if (!checking) void this.writeStoryFor(note);
+				return true;
+			},
+		});
+
+		this.addCommand({
+			id: 'paint',
+			name: t('command.paint'),
+			checkCallback: (checking) => {
+				// Painting runs on a computer's graphics card, so phones don't offer it
+				const note = this.app.workspace.getActiveFile();
+				if (Platform.isMobile || !note || !this.isEntry(note)) return false;
+				if (!checking) void this.paintFor(note);
 				return true;
 			},
 		});
@@ -118,6 +133,15 @@ export default class JeongPlugin extends Plugin {
 	applyTheme() {
 		document.body.toggleClass('jeong-theme-light', this.settings.theme === 'light');
 		document.body.toggleClass('jeong-theme-dark', this.settings.theme === 'dark');
+		// Paintings sit on the card's paper, which follows the theme
+		this.refreshTimelines();
+	}
+
+	/** Redraws open timelines, e.g. after the ink color changes. */
+	refreshTimelines() {
+		for (const leaf of this.app.workspace.getLeavesOfType(TIMELINE_VIEW)) {
+			if (leaf.view instanceof TimelineView) leaf.view.applyInk();
+		}
 	}
 
 	openRecorder() {
@@ -125,7 +149,13 @@ export default class JeongPlugin extends Plugin {
 	}
 
 	private recordOptions() {
-		return { liveMode: this.settings.liveMode, journalFolder: this.settings.journalFolder, ollama: this.ollama };
+		return {
+			liveMode: this.settings.liveMode,
+			journalFolder: this.settings.journalFolder,
+			ollama: this.ollama,
+			painter: this.painter,
+			paintInk: this.settings.paintInk,
+		};
 	}
 
 	/** An entry is a note in the journal folder with a date and a visibility in its frontmatter. */
@@ -137,6 +167,12 @@ export default class JeongPlugin extends Plugin {
 	private async writeStoryFor(note: TFile) {
 		const notice = new Notice(storyMessage('story'), 0);
 		await writeStory(this.app, this.ollama, this.metrics, note, (progress) => notice.setMessage(storyMessage(progress)));
+		window.setTimeout(() => notice.hide(), 6000);
+	}
+
+	private async paintFor(note: TFile) {
+		const notice = new Notice(paintMessage('scene'), 0);
+		await this.painter.paint(note, (progress) => notice.setMessage(paintMessage(progress)));
 		window.setTimeout(() => notice.hide(), 6000);
 	}
 
