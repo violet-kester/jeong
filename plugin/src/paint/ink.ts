@@ -1,8 +1,6 @@
 // Paintings are made in black ink, which the model does reliably, and shown in one ink color by an SVG
-// filter that reads each pixel's lightness. Light theme: the ink becomes the color and the paper vanishes, so
-// red strokes sit straight on the card. Dark theme: the other way round, like a woodcut's carved lines: the
-// solid ink vanishes into the dark card and the light lines become the color. (Keeping the ink as the color on
-// a dark card made solid areas glow and looked like a negative.) The files stay black; nothing is repainted.
+// filter: the dark lines become the color, and everything light becomes transparent, so the strokes sit
+// straight on the card in either theme. The files stay black; changing the color never needs a repaint.
 
 export type InkName = 'cinnabar' | 'vermilion' | 'crimson' | 'oxblood' | 'black';
 
@@ -31,15 +29,15 @@ export function applyInk(root: HTMLElement, ink: InkName): void {
 		filter = svg.appendChild(document.createElementNS(SVG, 'filter'));
 		filter.id = INK_FILTER_ID;
 		filter.setAttribute('color-interpolation-filters', 'sRGB');
+		// Only the image itself, no margin around it
+		for (const [key, value] of Object.entries({ x: '0', y: '0', width: '1', height: '1' })) filter.setAttribute(key, value);
 	}
 	filter.empty();
 
-	const card = rgb(getComputedStyle(root).getPropertyValue('--jeong-card').trim());
-	const dark = !!card && card.reduce((sum, v) => sum + v, 0) / card.length < 128;
 	const [r, g, b] = (rgb(color) ?? [178, 67, 47]).map((v) => (v / 255).toFixed(3));
-	// How opaque each pixel is: its darkness in the light theme, its lightness in the dark theme
-	const opacity = dark ? '0.33 0.33 0.33 0 0' : '-0.33 -0.33 -0.33 0 1';
-	primitive(filter, 'feColorMatrix', { type: 'matrix', values: `0 0 0 0 ${r}  0 0 0 0 ${g}  0 0 0 0 ${b}  ${opacity}` });
+	// Every pixel becomes the ink color; how dark it was becomes how opaque it is. (Opacity minus lightness, so
+	// anything already transparent, like the filter's margin around the image, stays transparent.)
+	primitive(filter, 'feColorMatrix', { type: 'matrix', values: `0 0 0 0 ${r}  0 0 0 0 ${g}  0 0 0 0 ${b}  -0.33 -0.33 -0.33 1 0` });
 	// The faint grain at the far end would leave a haze; it's cut away, and the strokes kept crisp
 	const alpha = primitive(filter, 'feComponentTransfer', {});
 	primitive(alpha, 'feFuncA', { type: 'linear', slope: '1.3', intercept: '-0.12' });
