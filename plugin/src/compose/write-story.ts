@@ -1,6 +1,6 @@
 import { App, TFile } from 'obsidian';
 import { composeEntry, type ComposeStep } from './composer';
-import type { Ollama } from './ollama';
+import type { LanguageModel } from './language-model';
 import type { Metrics } from '../metrics/metrics';
 import { applyStory, findTranscript, transcriptText } from '../journal/apply-story';
 
@@ -12,12 +12,12 @@ export type StoryProgress = ComposeStep | 'not-ready' | 'done' | 'failed';
  */
 export async function writeStory(
 	app: App,
-	ollama: Ollama,
+	llm: LanguageModel,
 	metrics: Metrics,
 	note: TFile,
 	onProgress: (progress: StoryProgress) => void,
 ): Promise<boolean> {
-	if (!(await ollama.isReady())) {
+	if (!(await llm.isReady())) {
 		onProgress('not-ready');
 		return false;
 	}
@@ -27,7 +27,7 @@ export async function writeStory(
 
 	try {
 		let model = '';
-		const composed = await composeEntry(ollama, transcript, (step, result) => {
+		const composed = await composeEntry(llm, transcript, (step, result) => {
 			if (!result) {
 				onProgress(step);
 				return;

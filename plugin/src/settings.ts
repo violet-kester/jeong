@@ -1,20 +1,36 @@
-import { App, PluginSettingTab, Setting, normalizePath } from 'obsidian';
+import { App, PluginSettingTab, SecretComponent, Setting, normalizePath } from 'obsidian';
 import type JeongPlugin from './main';
 import { INKS, type InkName } from './paint/ink';
+import type { StoryProvider } from './compose/language-model';
+import { FolderSuggest } from './ui/folder-suggest';
 import { t } from './i18n';
 
 export interface JeongSettings {
 	journalFolder: string;
 	/** How the words you see while you talk are written. */
 	liveMode: LiveMode;
+	/** Who writes stories and summaries: Ollama on this computer, or Claude or OpenAI with the person's own key. */
+	storyProvider: StoryProvider;
 	/** Where Ollama runs (on this computer). */
 	ollamaUrl: string;
 	/** The Ollama model that writes stories and summaries. */
 	storyModel: string;
+	/** The name of the Anthropic API key in Obsidian's keychain (never the key itself). */
+	claudeKey: string;
+	claudeModel: string;
+	/** The name of the OpenAI API key in Obsidian's keychain (never the key itself). */
+	openaiKey: string;
+	openaiModel: string;
 	/** On a computer, write up phone recordings automatically when they arrive. */
 	autoProcessLoose: boolean;
 	/** Jeong's own light or dark colors, or whatever Obsidian uses. */
 	theme: JeongTheme;
+	/** Who paints: ComfyUI on this computer, or OpenAI's or xAI's image API with the person's own key. */
+	paintProvider: 'comfyui' | 'openai' | 'xai';
+	/** The name of the xAI API key in Obsidian's keychain (never the key itself). */
+	xaiKey: string;
+	openaiImageModel: string;
+	xaiImageModel: string;
 	/** Where ComfyUI runs (on this computer), for paintings. */
 	comfyUrl: string;
 	/** How paintings look: added to every picture's description. */
@@ -44,10 +60,19 @@ export const PAINT_STYLE =
 export const DEFAULT_SETTINGS: JeongSettings = {
 	journalFolder: 'spaces/jeong',
 	liveMode: 'hybrid',
+	storyProvider: 'ollama',
 	ollamaUrl: 'http://localhost:11434',
 	storyModel: 'granite4:tiny-h',
+	claudeKey: '',
+	claudeModel: 'claude-opus-5-5',
+	openaiKey: '',
+	openaiModel: 'gpt-5',
 	autoProcessLoose: true,
 	theme: 'obsidian',
+	paintProvider: 'comfyui',
+	xaiKey: '',
+	openaiImageModel: 'gpt-image-1',
+	xaiImageModel: 'grok-2-image',
 	comfyUrl: 'http://127.0.0.1:8188',
 	paintStyle: PAINT_STYLE,
 	paintWorkflow: '',
@@ -69,15 +94,16 @@ export class JeongSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t('settings.journalFolder.name'))
 			.setDesc(t('settings.journalFolder.desc'))
-			.addText((text) =>
+			.addText((text) => {
+				new FolderSuggest(this.app, text.inputEl);
 				text
 					.setPlaceholder(DEFAULT_SETTINGS.journalFolder)
 					.setValue(this.plugin.settings.journalFolder)
 					.onChange(async (value) => {
 						this.plugin.settings.journalFolder = normalizePath(value || DEFAULT_SETTINGS.journalFolder);
 						await this.plugin.saveSettings();
-					}),
-			);
+					});
+			});
 
 		new Setting(containerEl)
 			.setName(t('settings.theme.name'))
@@ -120,32 +146,53 @@ export class JeongSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName(t('settings.storyModel.name'))
-			.setDesc(t('settings.storyModel.desc'))
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_SETTINGS.storyModel)
-					.setValue(this.plugin.settings.storyModel)
+			.setName(t('settings.storyProvider.name'))
+			.setDesc(t('settings.storyProvider.desc'))
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('ollama', t('settings.storyProvider.ollama'))
+					.addOption('claude', t('settings.storyProvider.claude'))
+					.addOption('openai', t('settings.storyProvider.openai'))
+					.setValue(this.plugin.settings.storyProvider)
 					.onChange(async (value) => {
-						this.plugin.settings.storyModel = value.trim() || DEFAULT_SETTINGS.storyModel;
+						this.plugin.settings.storyProvider = value === 'claude' || value === 'openai' ? value : 'ollama';
 						await this.plugin.saveSettings();
+						// Show the fields for the chosen writer
+						this.display();
 					}),
 			);
 
-		new Setting(containerEl)
-			.setName(t('settings.ollamaUrl.name'))
-			.setDesc(t('settings.ollamaUrl.desc'))
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_SETTINGS.ollamaUrl)
-					.setValue(this.plugin.settings.ollamaUrl)
-					.onChange(async (value) => {
-						this.plugin.settings.ollamaUrl = value.trim() || DEFAULT_SETTINGS.ollamaUrl;
-						await this.plugin.saveSettings();
-					}),
-			);
+		const provider = this.plugin.settings.storyProvider;
+		if (provider === 'ollama') {
+			this.textSetting('storyModel', t('settings.storyModel.name'), t('settings.storyModel.desc'));
+			this.textSetting('ollamaUrl', t('settings.ollamaUrl.name'), t('settings.ollamaUrl.desc'));
+		} else if (provider === 'claude') {
+			this.keySetting('claudeKey', t('settings.claudeKey.desc'));
+			this.textSetting('claudeModel', t('settings.cloudModel.name'), t('settings.claudeModel.desc'));
+		} else {
+			this.keySetting('openaiKey', t('settings.openaiKey.desc'));
+			this.textSetting('openaiModel', t('settings.cloudModel.name'), t('settings.openaiModel.desc'));
+		}
 
 		new Setting(containerEl).setName(t('settings.paint.heading')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('settings.paintProvider.name'))
+			.setDesc(t('settings.paintProvider.desc'))
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('comfyui', t('settings.paintProvider.comfyui'))
+					.addOption('openai', t('settings.paintProvider.openai'))
+					.addOption('xai', t('settings.paintProvider.xai'))
+					.setValue(this.plugin.settings.paintProvider)
+					.onChange(async (value) => {
+						this.plugin.settings.paintProvider = value === 'openai' || value === 'xai' ? value : 'comfyui';
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		const painter = this.plugin.settings.paintProvider;
 
 		new Setting(containerEl)
 			.setName(t('settings.paintStyle.name'))
@@ -174,30 +221,67 @@ export class JeongSettingTab extends PluginSettingTab {
 				});
 			});
 
-		new Setting(containerEl)
-			.setName(t('settings.comfyUrl.name'))
-			.setDesc(t('settings.comfyUrl.desc'))
+		if (painter === 'openai') {
+			this.keySetting('openaiKey', t('settings.openaiKey.desc'));
+			this.textSetting('openaiImageModel', t('settings.cloudModel.name'), t('settings.openaiImageModel.desc'));
+		} else if (painter === 'xai') {
+			this.keySetting('xaiKey', t('settings.xaiKey.desc'));
+			this.textSetting('xaiImageModel', t('settings.cloudModel.name'), t('settings.xaiImageModel.desc'));
+		} else {
+			new Setting(containerEl)
+				.setName(t('settings.comfyUrl.name'))
+				.setDesc(t('settings.comfyUrl.desc'))
+				.addText((text) =>
+					text
+						.setPlaceholder(DEFAULT_SETTINGS.comfyUrl)
+						.setValue(this.plugin.settings.comfyUrl)
+						.onChange(async (value) => {
+							this.plugin.settings.comfyUrl = value.trim() || DEFAULT_SETTINGS.comfyUrl;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(containerEl)
+				.setName(t('settings.paintWorkflow.name'))
+				.setDesc(t('settings.paintWorkflow.desc'))
+				.addText((text) =>
+					text
+						.setPlaceholder('jeong/painting.json')
+						.setValue(this.plugin.settings.paintWorkflow)
+						.onChange(async (value) => {
+							this.plugin.settings.paintWorkflow = value.trim() ? normalizePath(value.trim()) : '';
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+	}
+
+	/** A text setting that falls back to its default when left empty. */
+	private textSetting(key: 'storyModel' | 'ollamaUrl' | 'claudeModel' | 'openaiModel' | 'openaiImageModel' | 'xaiImageModel', name: string, desc: string): void {
+		new Setting(this.containerEl)
+			.setName(name)
+			.setDesc(desc)
 			.addText((text) =>
 				text
-					.setPlaceholder(DEFAULT_SETTINGS.comfyUrl)
-					.setValue(this.plugin.settings.comfyUrl)
+					.setPlaceholder(DEFAULT_SETTINGS[key])
+					.setValue(this.plugin.settings[key])
 					.onChange(async (value) => {
-						this.plugin.settings.comfyUrl = value.trim() || DEFAULT_SETTINGS.comfyUrl;
+						this.plugin.settings[key] = value.trim() || DEFAULT_SETTINGS[key];
 						await this.plugin.saveSettings();
 					}),
 			);
+	}
 
-		new Setting(containerEl)
-			.setName(t('settings.paintWorkflow.name'))
-			.setDesc(t('settings.paintWorkflow.desc'))
-			.addText((text) =>
-				text
-					.setPlaceholder('jeong/painting.json')
-					.setValue(this.plugin.settings.paintWorkflow)
-					.onChange(async (value) => {
-						this.plugin.settings.paintWorkflow = value.trim() ? normalizePath(value.trim()) : '';
-						await this.plugin.saveSettings();
-					}),
+	/** An API key, kept in Obsidian's keychain on this device rather than in the vault, where it would sync. */
+	private keySetting(key: 'claudeKey' | 'openaiKey' | 'xaiKey', desc: string): void {
+		new Setting(this.containerEl)
+			.setName(t('settings.apiKey.name'))
+			.setDesc(desc)
+			.addComponent((el) =>
+				new SecretComponent(this.app, el).setValue(this.plugin.settings[key]).onChange(async (value) => {
+					this.plugin.settings[key] = value;
+					await this.plugin.saveSettings();
+				}),
 			);
 	}
 }

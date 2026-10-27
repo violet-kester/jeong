@@ -1,12 +1,13 @@
 import { App, TFile, normalizePath } from 'obsidian';
-import type { ChatResult, Ollama } from '../compose/ollama';
+import type { ChatResult, LanguageModel } from '../compose/language-model';
 import type { Metrics } from '../metrics/metrics';
 import { freeName } from '../journal/entry-writer';
+import { CloudImages } from './cloud-images';
 import { ComfyUI, type Workflow } from './comfyui';
 import { kleinWorkflow } from './klein-workflow';
 
-// Paints a picture for an entry that has no photos, all on this computer:
-// Ollama describes one scene from the entry, and ComfyUI paints it in the style from settings.
+// Paints a picture for an entry that has no photos, on this computer unless a cloud painter is chosen in settings:
+// The language model describes one scene from the entry, and ComfyUI paints it in the style from settings.
 // The painting is saved in the entry's folder and named in its frontmatter (painting), with the
 // scene it was painted from (scene), so it's clear it's a painting and not a photo.
 
@@ -55,14 +56,22 @@ const ARTWORK =
 export type PaintProgress = 'scene' | 'painting' | 'not-ready' | 'done' | 'failed';
 
 export interface PaintSettings {
+	/** ComfyUI on this computer, or OpenAI's or xAI's image API with the person's own key. */
+	paintProvider: 'comfyui' | 'openai' | 'xai';
 	comfyUrl: string;
+	/** Names of API keys in Obsidian's keychain. */
+	openaiKey: string;
+	xaiKey: string;
+	openaiImageModel: string;
+	xaiImageModel: string;
 	paintStyle: string;
 	/** A workflow exported from ComfyUI (Export (API)), with {{prompt}} where the words go; '' uses FLUX.2 klein. */
 	paintWorkflow: string;
 }
 
 export class Painter {
-	readonly comfy: ComfyUI;
+	private comfy: ComfyUI;
+	private cloud: CloudImages;
 	private busy = new Set<string>();
 	/** Entries whose painting just finished and hasn't been shown yet, so the timeline can brush it on. */
 	private fresh = new Set<string>();
@@ -70,11 +79,22 @@ export class Painter {
 
 	constructor(
 		private app: App,
-		private ollama: Ollama,
+		private llm: LanguageModel,
 		private metrics: Metrics,
 		private settings: () => PaintSettings,
+		secret: (id: string) => string,
 	) {
 		this.comfy = new ComfyUI(() => this.settings().comfyUrl);
+		const cloud = () => (this.settings().paintProvider === 'xai' ? 'xai' : 'openai');
+		this.cloud = new CloudImages(
+			cloud,
+			() => secret(cloud() === 'xai' ? this.settings().xaiKey : this.settings().openaiKey),
+			() => (cloud() === 'xai' ? this.settings().xaiImageModel : this.settings().openaiImageModel),
+		);
+	}
+
+	private get local(): boolean {
+		return this.settings().paintProvider === 'comfyui';
 	}
 
 	/** True while this entry is being painted. */
@@ -96,7 +116,7 @@ export class Painter {
 	/** Paints a picture for the entry, replacing any earlier painting. */
 	async paint(note: TFile, onProgress: (progress: PaintProgress) => void = () => {}): Promise<boolean> {
 		if (this.busy.has(note.path)) return false;
-		if (!(await this.comfy.isReady())) {
+		if (!(this.local ? await this.comfy.isReady() : this.cloud.isReady())) {
 			onProgress('not-ready');
 			return false;
 		}
@@ -106,12 +126,12 @@ export class Painter {
 			onProgress('scene');
 			const scene = await this.scene(note);
 			// An 8 GB graphics card can't hold the story model and the painting model at once
-			await this.ollama.unload();
+			await this.llm.unload();
 			onProgress('painting');
 			// Style first: the model pays the most attention to the start of the prompt
 			const composition = COMPOSITIONS[Math.floor(Math.random() * COMPOSITIONS.length)];
 			const prompt = `${this.settings().paintStyle} ${ARTWORK}\n\nComposition: ${composition}\n\nSubject: ${scene}`;
-			const png = await this.comfy.paint(await this.workflow(prompt));
+			const png = this.local ? await this.comfy.paint(await this.workflow(prompt)) : await this.cloud.paint(prompt);
 			this.fresh.add(note.path);
 			await this.save(note, await toJpeg(png), scene);
 			onProgress('done');
@@ -131,22 +151,22 @@ export class Painter {
 		this.listeners.forEach((listener) => listener());
 	}
 
-	/** What to paint, from the entry. Without Ollama, the title and summary are the scene. */
+	/** What to paint, from the entry. Without a language model, the title and summary are the scene. */
 	private async scene(note: TFile): Promise<string> {
 		const fm = this.app.metadataCache.getFileCache(note)?.frontmatter ?? {};
 		const title = typeof fm.title === 'string' ? fm.title : note.basename;
 		const summary = typeof fm.summary === 'string' ? fm.summary : '';
 		const story = storyText(await this.app.vault.cachedRead(note)).slice(0, 6000);
-		if (!(await this.ollama.isReady())) return [title, summary].filter(Boolean).join('. ');
+		if (!(await this.llm.isReady())) return [title, summary].filter(Boolean).join('. ');
 		const entry = story || summary;
-		const scene = await this.ollama.chat([
+		const scene = await this.llm.chat([
 			{ role: 'system', content: SCENE_RULES },
 			{ role: 'user', content: `TITLE: ${title}\n\nENTRY:\n${entry}` },
 		]);
 		this.logLlm('scene', scene);
 		// Small models add things to make a picture vivid (steam from a cold drink, a lamp, clutter). A check lists them;
 		// Jeong keeps only the ones really missing from the entry, then drops each clause that holds one
-		const check = await this.ollama.chat(
+		const check = await this.llm.chat(
 			[
 				{ role: 'system', content: CHECK_RULES },
 				{ role: 'user', content: `ENTRY:\n${entry}\n\nDESCRIPTION:\n${scene.content}` },
@@ -241,9 +261,9 @@ function storyText(content: string): string {
 		.trim();
 }
 
-/** ComfyUI saves PNGs; a JPEG is a fraction of the size, which matters when the vault syncs to a phone. */
+/** The painters send PNGs; a JPEG is a fraction of the size, which matters when the vault syncs to a phone. */
 async function toJpeg(png: ArrayBuffer): Promise<ArrayBuffer> {
-	const bitmap = await createImageBitmap(new Blob([png], { type: 'image/png' }));
+	const bitmap = await createImageBitmap(new Blob([png]));
 	const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
 	canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
 	bitmap.close();

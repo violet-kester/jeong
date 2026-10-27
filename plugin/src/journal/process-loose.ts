@@ -3,7 +3,7 @@ import { SpeechEngine } from '../transcribe/speech-engine';
 import { transcribeRecording } from '../transcribe/final-transcriber';
 import { writeEntry } from './entry-writer';
 import { writeStory } from '../compose/write-story';
-import type { Ollama } from '../compose/ollama';
+import type { LanguageModel } from '../compose/language-model';
 import type { Metrics } from '../metrics/metrics';
 import { storyMessage } from '../ui/story-messages';
 import { t } from '../i18n';
@@ -25,7 +25,7 @@ export class LooseProcessor {
 	constructor(
 		private app: App,
 		private journalFolder: () => string,
-		private ollama: Ollama,
+		private llm: LanguageModel,
 		private metrics: Metrics,
 		private version: string,
 	) {}
@@ -127,7 +127,7 @@ export class LooseProcessor {
 			for (const file of photoFiles) await this.app.fileManager.trashFile(file);
 			await this.app.fileManager.trashFile(note);
 
-			await writeStory(this.app, this.ollama, this.metrics, entry, (progress) => notice.setMessage(storyMessage(progress)));
+			await writeStory(this.app, this.llm, this.metrics, entry, (progress) => notice.setMessage(storyMessage(progress)));
 			notice.setMessage(t('loose.done'));
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

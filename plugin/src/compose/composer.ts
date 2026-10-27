@@ -1,4 +1,4 @@
-import type { ChatResult, Ollama } from './ollama';
+import type { ChatResult, LanguageModel } from './language-model';
 
 // Turns a spoken transcript into a journal entry: a story in the speaker's own voice,
 // a short title, and a one-paragraph summary for the timeline. Then it checks the story
@@ -49,7 +49,7 @@ export interface ComposedEntry {
 export type ComposeStep = 'story' | 'summary' | 'check' | 'rewrite';
 
 export async function composeEntry(
-	ollama: Ollama,
+	llm: LanguageModel,
 	transcript: string,
 	onStep: (step: ComposeStep, result?: ChatResult) => void,
 ): Promise<ComposedEntry> {
@@ -58,7 +58,7 @@ export async function composeEntry(
 	const contextTokens = Math.min(65_536, Math.max(8192, Math.ceil(words * 1.6 * 2.2) + 2048));
 
 	onStep('story');
-	const draft = await ollama.chat(
+	const draft = await llm.chat(
 		[
 			{ role: 'system', content: STORY_RULES },
 			{ role: 'user', content: `TRANSCRIPT:\n${transcript}` },
@@ -69,10 +69,10 @@ export async function composeEntry(
 	let story = draft.content;
 
 	onStep('check');
-	let flagged = await check(ollama, transcript, story, contextTokens, onStep);
+	let flagged = await check(llm, transcript, story, contextTokens, onStep);
 	if (flagged.length) {
 		onStep('rewrite');
-		const rewrite = await ollama.chat(
+		const rewrite = await llm.chat(
 			[
 				{ role: 'system', content: STORY_RULES },
 				{ role: 'user', content: `TRANSCRIPT:\n${transcript}` },
@@ -86,11 +86,11 @@ export async function composeEntry(
 		);
 		onStep('rewrite', rewrite);
 		story = rewrite.content || story;
-		flagged = await check(ollama, transcript, story, contextTokens, onStep);
+		flagged = await check(llm, transcript, story, contextTokens, onStep);
 	}
 
 	onStep('summary');
-	const summaryResult = await ollama.chat(
+	const summaryResult = await llm.chat(
 		[
 			{ role: 'system', content: SUMMARY_RULES },
 			{ role: 'user', content: story },
@@ -103,7 +103,7 @@ export async function composeEntry(
 	// Small models sometimes describe the person from outside ("the narrator", "they"); ask once more for "I"
 	if (summary && /\b(the (narrator|speaker|author|user|person)|they|their|them)\b/i.test(summary)) {
 		onStep('summary');
-		const firstPerson = await ollama.chat(
+		const firstPerson = await llm.chat(
 			[
 				{ role: 'system', content: SUMMARY_RULES },
 				{ role: 'user', content: story },
@@ -119,10 +119,10 @@ export async function composeEntry(
 	}
 
 	// The summary is checked too: if it adds anything, it's rewritten once, then flagged
-	const summaryFlags = await check(ollama, transcript, summary ?? '', contextTokens, onStep);
+	const summaryFlags = await check(llm, transcript, summary ?? '', contextTokens, onStep);
 	if (summaryFlags.length) {
 		onStep('summary');
-		const retry = await ollama.chat(
+		const retry = await llm.chat(
 			[
 				{ role: 'system', content: SUMMARY_RULES },
 				{ role: 'user', content: story },
@@ -138,7 +138,7 @@ export async function composeEntry(
 		const fixed = parse<{ title?: string; summary?: string }>(retry.content, {});
 		title = fixed.title || title;
 		summary = fixed.summary || summary;
-		flagged.push(...(await check(ollama, transcript, summary ?? '', contextTokens, onStep)));
+		flagged.push(...(await check(llm, transcript, summary ?? '', contextTokens, onStep)));
 	}
 
 	return {
@@ -151,13 +151,13 @@ export async function composeEntry(
 }
 
 async function check(
-	ollama: Ollama,
+	llm: LanguageModel,
 	transcript: string,
 	story: string,
 	contextTokens: number,
 	onStep: (step: ComposeStep, result?: ChatResult) => void,
 ): Promise<string[]> {
-	const result = await ollama.chat(
+	const result = await llm.chat(
 		[
 			{ role: 'system', content: CHECK_RULES },
 			{ role: 'user', content: `TRANSCRIPT:\n${transcript}\n\nSTORY:\n${story}` },

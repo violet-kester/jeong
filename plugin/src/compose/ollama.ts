@@ -1,20 +1,8 @@
 import { requestUrl } from 'obsidian';
+import type { ChatMessage, ChatOptions, ChatResult, LanguageModel } from './language-model';
 
 // Talks to Ollama, which runs the language model (Granite) on this computer.
 // Requests only go to the local address in settings, never to the internet.
-
-export interface ChatMessage {
-	role: 'system' | 'user' | 'assistant';
-	content: string;
-}
-
-export interface ChatResult {
-	content: string;
-	model: string;
-	promptTokens: number;
-	outputTokens: number;
-	ms: number;
-}
 
 interface OllamaResponse {
 	model: string;
@@ -24,14 +12,13 @@ interface OllamaResponse {
 	total_duration?: number;
 }
 
-export class Ollama {
+export class Ollama implements LanguageModel {
 	constructor(
 		private url: () => string,
 		private model: () => string,
 	) {}
 
-	/** Sends a conversation and returns the reply. Pass a JSON schema to get structured output. */
-	async chat(messages: ChatMessage[], options: { schema?: object; contextTokens?: number } = {}): Promise<ChatResult> {
+	async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResult> {
 		const started = performance.now();
 		const response = await requestUrl({
 			url: `${this.url().replace(/\/$/, '')}/api/chat`,

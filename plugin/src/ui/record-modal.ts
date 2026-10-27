@@ -10,7 +10,7 @@ import { saveLoosePage } from '../journal/loose-pages';
 import { PhotoTray } from './photo-tray';
 import { openButtonRound } from './open-button';
 import { writeStory } from '../compose/write-story';
-import type { Ollama } from '../compose/ollama';
+import type { LanguageModel } from '../compose/language-model';
 import { paintMessage, storyMessage } from './story-messages';
 import { LiveTranscriber } from '../transcribe/live-transcriber';
 import { transcribeRecording } from '../transcribe/final-transcriber';
@@ -28,7 +28,7 @@ export interface RecordModalOptions {
 	/** Where entries are saved, inside the vault. */
 	journalFolder: string;
 	/** The local language model that writes stories and summaries. */
-	ollama: Ollama;
+	llm: LanguageModel;
 	/** Show the test script and score both transcripts against it. */
 	test?: boolean;
 	/** Paints a picture for an entry without photos (on a computer), shown in `paintInk`. */
@@ -429,7 +429,7 @@ export class RecordModal extends Modal {
 			this.status.setText(t('record.savedEntry'));
 			this.showSaved(note);
 			this.showStoryPane();
-			const written = await writeStory(this.app, this.options.ollama, this.metrics, note, (progress) => this.status.setText(storyMessage(progress)));
+			const written = await writeStory(this.app, this.options.llm, this.metrics, note, (progress) => this.status.setText(storyMessage(progress)));
 			await this.fillStory(note, written);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -467,7 +467,7 @@ export class RecordModal extends Modal {
 			this.showSaved(note);
 			// Turn the transcript into a story, in the background; the entry is already safe
 			this.showStoryPane();
-			const written = await writeStory(this.app, this.options.ollama, this.metrics, note, (progress) => this.status.setText(storyMessage(progress)));
+			const written = await writeStory(this.app, this.options.llm, this.metrics, note, (progress) => this.status.setText(storyMessage(progress)));
 			await this.fillStory(note, written);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

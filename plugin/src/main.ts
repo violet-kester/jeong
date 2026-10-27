@@ -1,6 +1,6 @@
 import { Notice, Platform, Plugin, TFile } from 'obsidian';
 import { LooseProcessor } from './journal/process-loose';
-import { Ollama } from './compose/ollama';
+import { StoryWriter } from './compose/language-model';
 import { writeStory } from './compose/write-story';
 import { paintMessage, storyMessage } from './ui/story-messages';
 import { TIMELINE_VIEW, TimelineView } from './ui/timeline-view';
@@ -18,7 +18,7 @@ import { t } from './i18n';
 export default class JeongPlugin extends Plugin {
 	settings!: JeongSettings;
 	metrics!: Metrics;
-	ollama!: Ollama;
+	llm!: StoryWriter;
 	loose!: LooseProcessor;
 	painter!: Painter;
 
@@ -26,9 +26,10 @@ export default class JeongPlugin extends Plugin {
 		await this.loadSettings();
 		this.applyTheme();
 		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, this.manifest.version);
-		this.ollama = new Ollama(() => this.settings.ollamaUrl, () => this.settings.storyModel);
-		this.painter = new Painter(this.app, this.ollama, this.metrics, () => this.settings);
-		this.loose = new LooseProcessor(this.app, () => this.settings.journalFolder, this.ollama, this.metrics, this.manifest.version);
+		const secret = (id: string) => (id ? (this.app.secretStorage.getSecret(id) ?? '') : '');
+		this.llm = new StoryWriter(() => this.settings, secret);
+		this.painter = new Painter(this.app, this.llm, this.metrics, () => this.settings, secret);
+		this.loose = new LooseProcessor(this.app, () => this.settings.journalFolder, this.llm, this.metrics, this.manifest.version);
 
 		this.registerView(TIMELINE_VIEW, (leaf) => new TimelineView(leaf, this));
 
@@ -150,7 +151,7 @@ export default class JeongPlugin extends Plugin {
 		return {
 			liveMode: this.settings.liveMode,
 			journalFolder: this.settings.journalFolder,
-			ollama: this.ollama,
+			llm: this.llm,
 			painter: this.painter,
 			paintInk: this.settings.paintInk,
 		};
@@ -164,7 +165,7 @@ export default class JeongPlugin extends Plugin {
 
 	private async writeStoryFor(note: TFile) {
 		const notice = new Notice(storyMessage('story'), 0);
-		await writeStory(this.app, this.ollama, this.metrics, note, (progress) => notice.setMessage(storyMessage(progress)));
+		await writeStory(this.app, this.llm, this.metrics, note, (progress) => notice.setMessage(storyMessage(progress)));
 		window.setTimeout(() => notice.hide(), 6000);
 	}
 
