@@ -8,6 +8,9 @@ export default defineConfig(
 		'dist',
 		'build',
 		'esbuild.config.mjs',
+		'build-tools.mjs',
+		// Jeong in the browser: a stand-in for Obsidian and a dev server, not part of the plugin these rules are for
+		'web',
 		'version-bump.mjs',
 		'versions.json',
 		'main.js',
