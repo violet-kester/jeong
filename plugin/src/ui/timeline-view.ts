@@ -85,7 +85,9 @@ export class TimelineView extends ItemView {
 		setIcon(later, 'chevron-right');
 		setIcon(zoomOut, 'minus');
 		setIcon(zoomIn, 'plus');
-		const today = views.createEl('button', { cls: 'jeong-timeline-today', text: t('timeline.today') });
+		const today = views.createEl('button', { cls: 'jeong-timeline-today' });
+		setIcon(today.createSpan({ cls: 'jeong-timeline-today-icon' }), 'locate-fixed');
+		today.createSpan({ text: t('timeline.today') });
 		zoomOut.addEventListener('click', () => this.setZoom(this.zoom / 1.6));
 		zoomIn.addEventListener('click', () => this.setZoom(this.zoom * 1.6));
 		earlier.addEventListener('click', () => this.showYear(this.year - 1));
@@ -161,10 +163,12 @@ export class TimelineView extends ItemView {
 	 * see-through), and the numerals and cards start below them.
 	 */
 	private measureTop(): void {
+		// Only the part of the header that actually lies over the timeline counts: on phones Obsidian draws its
+		// own header above the view, so nothing overlaps there
 		const header = this.containerEl.querySelector<HTMLElement>('.view-header');
-		const headerHeight = header && getComputedStyle(header).position === 'absolute' ? header.offsetHeight : 0;
-		this.bar.style.top = `${headerHeight}px`;
-		this.top = headerHeight + this.bar.offsetHeight;
+		const overlap = header ? Math.max(0, Math.round(header.getBoundingClientRect().bottom - this.contentEl.getBoundingClientRect().top)) : 0;
+		this.bar.style.top = `${overlap}px`;
+		this.top = overlap + this.bar.offsetHeight;
 		this.contentEl.style.setProperty('--jeong-timeline-top', `${this.top}px`);
 	}
 

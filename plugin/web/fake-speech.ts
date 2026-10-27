@@ -44,8 +44,10 @@ export class LiveTranscriber {
 		this.phrase = `${this.phrase} ${this.words.shift() ?? ''}`.trim();
 		this.handlers.onPartial(this.phrase);
 		if (!this.words.length) {
+			// As with the real models: the phrase ends, and its final words arrive while the next is being spoken
 			const phrase = this.phrase;
-			window.setTimeout(() => this.write(phrase), 500);
+			this.handlers.onPhraseEnd();
+			window.setTimeout(() => this.write(phrase), 1400);
 		}
 	}
 
@@ -60,6 +62,7 @@ export class LiveTranscriber {
 		window.clearInterval(this.timer);
 		if (this.words.length && this.phrase) {
 			this.words = [];
+			this.handlers.onPhraseEnd();
 			this.write(this.phrase);
 		}
 	}

@@ -12,6 +12,8 @@ const here = import.meta.dirname;
 const serve = process.argv.includes('--serve');
 const dist = path.join(here, 'dist');
 fs.mkdirSync(dist, { recursive: true });
+// The tab icon: Jeong's square logo
+fs.copyFileSync(path.join(here, '..', '..', 'jeong-logo-square.svg'), path.join(dist, 'icon.svg'));
 
 // "obsidian" is the stand-in in obsidian.ts
 const obsidianShim = {
@@ -60,6 +62,8 @@ const common = {
 	target: 'es2022',
 	sourcemap: 'inline',
 	logLevel: 'info',
+	// Jeong's mark (정 in Bagel Fat One) comes in as SVG text
+	loader: { '.svg': 'text' },
 };
 
 const real = await esbuild.context({ ...common, outfile: path.join(dist, 'jeong.js'), define: { JEONG_DEMO: 'false' }, plugins: [obsidianShim, inlineWorker(false), styles] });

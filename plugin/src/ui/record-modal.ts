@@ -52,6 +52,8 @@ export class RecordModal extends Modal {
 	private heading!: HTMLElement;
 	private transcript!: HTMLElement;
 	private partial!: HTMLElement;
+	/** Phrases that have ended but whose final words haven't arrived yet, oldest first. */
+	private wet: HTMLElement[] = [];
 	private details!: HTMLElement;
 	private modelRow!: HTMLElement;
 	private speedRow!: HTMLElement;
@@ -253,14 +255,26 @@ export class RecordModal extends Modal {
 					this.transcript.scrollTop = this.transcript.scrollHeight;
 					if (text) this.transcript.removeClass('is-empty');
 				},
+				// A finished phrase keeps its guessed words, still wet, in place while the next phrase is
+				// guessed after it; when its final words arrive they replace the guess there and dry to ink
+				onPhraseEnd: () => {
+					const wet = createSpan({ cls: 'jeong-transcript-partial', text: this.partial.getText() ? `${this.partial.getText()} ` : '' });
+					this.take.insertBefore(wet, this.partial);
+					this.wet.push(wet);
+					this.partial.setText('');
+				},
 				onFinal: (text) => {
+					const wet = this.wet.shift();
 					if (text) {
 						this.live.text.push(text);
-						this.take.insertBefore(createSpan({ cls: 'jeong-transcript-final', text: `${text} ` }), this.partial);
+						const final = inkWords(text);
+						if (wet?.isConnected) wet.replaceWith(final);
+						else this.take.insertBefore(final, this.partial);
 						this.transcript.removeClass('is-empty');
+					} else {
+						wet?.remove();
 					}
 					this.live.phrases++;
-					this.partial.setText('');
 					this.transcript.scrollTop = this.transcript.scrollHeight;
 				},
 				onTiming: (ms, audioMs, final) => {
@@ -591,6 +605,7 @@ export class RecordModal extends Modal {
 		this.note.setText(`${t('record.wordForWord')} · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
 		// This recording's live words are replaced by the final ones; earlier recordings stay above
 		this.take.empty();
+		this.wet = [];
 		this.take.createSpan({ cls: 'jeong-transcript-final', text: `${text} ` });
 		this.take.appendChild(this.partial);
 		this.transcript.removeClass('is-empty');
@@ -664,4 +679,13 @@ function round(value: number): number {
 
 function percent(value: number): string {
 	return `${Math.round(value * 100)}%`;
+}
+
+/** A finished live phrase, one span per word, so the ink can dry word by word (see .jeong-ink-word). */
+function inkWords(text: string): HTMLElement {
+	const phrase = createSpan({ cls: 'jeong-transcript-final is-words' });
+	text.split(/\s+/).filter(Boolean).forEach((word, i) => {
+		phrase.createSpan({ cls: 'jeong-ink-word', text: `${word} ` }).style.setProperty('--i', String(i));
+	});
+	return phrase;
 }

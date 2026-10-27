@@ -3,7 +3,7 @@
 // works offline; the speech models run in Chrome and the stories come from Ollama, both on this computer.
 // With ?demo it runs on a sample journal kept inside the browser instead, and never touches your vault.
 
-import { Platform, WorkspaceLeaf, moment } from './obsidian';
+import { Platform, WorkspaceLeaf, moment, setIcon } from './obsidian';
 import { FsVault } from './vault';
 import { seedDemo } from './demo';
 import { TimelineView } from '../src/ui/timeline-view';
@@ -11,6 +11,7 @@ import { RecordModal } from '../src/ui/record-modal';
 import { DEFAULT_SETTINGS, type JeongSettings } from '../src/settings';
 import { Metrics } from '../src/metrics/metrics';
 import { Ollama } from '../src/compose/ollama';
+import mark from '../../jeong-logo-card.svg';
 
 declare const JEONG_DEMO: boolean;
 
@@ -37,7 +38,7 @@ async function start(): Promise<void> {
 /** The first screen: choose the vault folder, or carry on with the one chosen last time. */
 function welcome(remembered: FileSystemDirectoryHandle | null): void {
 	const screen = document.body.createDiv({ cls: 'jeong jeong-web-welcome' });
-	screen.createDiv({ cls: 'jeong-web-mark', text: '정' });
+	screen.createDiv({ cls: 'jeong-web-mark' }).append(logo());
 	screen.createEl('h1', { text: 'Jeong' });
 	screen.createEl('p', { text: 'Your journal lives in your Obsidian vault. Choose the vault folder once, and Jeong will read and write your entries there, all on this computer.' });
 	const actions = screen.createDiv({ cls: 'jeong-web-actions' });
@@ -88,8 +89,69 @@ async function open(handle: FileSystemDirectoryHandle, name: string): Promise<vo
 	view.containerEl.setAttribute('data-type', view.getViewType());
 	document.body.prepend(view.containerEl);
 	await view.onOpen();
+	shareTitleLine(view);
+	addThemeToggle(view, settings);
 	window.addEventListener('resize', () => view.onResize());
 	if (params.has('record')) plugin.openRecorder();
+}
+
+/**
+ * In the browser there's no Obsidian around the timeline, so Jeong's mark sits beside the tab's title, and on
+ * a computer the title moves into the bar: one line for the title, the year, zoom, and Today.
+ */
+function shareTitleLine(view: TimelineView): void {
+	const header = view.containerEl.querySelector('.view-header');
+	const title = header?.querySelector('.view-header-title');
+	if (!header || !title) return;
+	const badge = createSpan({ cls: 'jeong-web-logo' });
+	badge.append(logo());
+	title.prepend(badge);
+	if (Platform.isMobile) return;
+	view.containerEl.querySelector('.jeong-timeline-bar')?.prepend(title);
+	header.remove();
+	view.onResize();
+}
+
+/**
+ * Light and dark, one tap away at the end of the bar. The choice is remembered in this browser only; it
+ * starts from the plugin's own theme setting.
+ */
+function addThemeToggle(view: TimelineView, settings: JeongSettings): void {
+	const bar = view.containerEl.querySelector('.jeong-timeline-bar');
+	if (!bar) return;
+	const isDark = () => document.body.hasClass('jeong-theme-dark') || (!document.body.hasClass('jeong-theme-light') && document.body.hasClass('theme-dark'));
+	const apply = (theme: 'light' | 'dark' | 'obsidian') => {
+		document.body.toggleClass('jeong-theme-light', theme === 'light');
+		document.body.toggleClass('jeong-theme-dark', theme === 'dark');
+		const dark = isDark();
+		setIcon(button, dark ? 'sun' : 'moon');
+		button.setAttribute('aria-label', dark ? 'Light theme' : 'Dark theme');
+	};
+	const pill = bar.createDiv({ cls: 'jeong-timeline-pill' });
+	const button = pill.createEl('button');
+	button.addEventListener('click', () => {
+		const theme = isDark() ? 'light' : 'dark';
+		apply(theme);
+		try {
+			localStorage.setItem(THEME_KEY, theme);
+		} catch {
+			// private window: it just isn't remembered
+		}
+	});
+	let saved: string | null = null;
+	try {
+		saved = localStorage.getItem(THEME_KEY);
+	} catch {
+		saved = null;
+	}
+	apply(saved === 'light' || saved === 'dark' ? saved : settings.theme);
+}
+
+const THEME_KEY = 'jeong-web-theme';
+
+/** Jeong's logo, the tall hwatu card, as an element. */
+function logo(): Element {
+	return new DOMParser().parseFromString(mark, 'image/svg+xml').documentElement;
 }
 
 /** The plugin's own settings, from the vault (so the browser uses the same journal folder and model). */

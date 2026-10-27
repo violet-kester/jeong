@@ -113,7 +113,8 @@ body {
 	--jeong-quick: 300ms; /* hovers, presses, things leaving */
 	--jeong-gentle: 550ms; /* things arriving: previews, windows, panes */
 	--jeong-slow: 900ms; /* a title settling in */
-	--jeong-drift: 1800ms; /* photos taking turns, ink drying */
+	--jeong-drift: 1800ms; /* photos taking turns, a whole page of ink drying */
+	--jeong-ink-step: 60ms; /* live words dry one after another, this far apart */
 	--jeong-rise: 10px; /* how far things travel as they arrive */
 }
 
@@ -419,6 +420,16 @@ body {
 /* Written words dry from wet persimmon to ink, smoothly, with no fade in between */
 .jeong.jeong-record .jeong-transcript-final {
 	animation: jeong-ink-dry var(--jeong-drift) var(--jeong-ease-in-out);
+}
+
+/* Live phrases dry word by word, from the first word on, like a line of ink drying behind the pen */
+.jeong.jeong-record .jeong-transcript-final.is-words {
+	animation: none;
+}
+
+.jeong.jeong-record .jeong-ink-word {
+	animation: jeong-ink-dry var(--jeong-slow) var(--jeong-ease-in-out) both;
+	animation-delay: calc(var(--i) * var(--jeong-ink-step));
 }
 
 @keyframes jeong-ink-dry {
@@ -1015,6 +1026,8 @@ body {
 
 .jeong-timeline-year {
 	padding: 0 6px;
+	/* trimmed to the numerals themselves, so they sit in the true middle of the pill */
+	text-box: trim-both cap alphabetic;
 	font-family: var(--jeong-numerals);
 	font-weight: 200;
 	font-size: 1.6em;
@@ -1061,8 +1074,11 @@ body {
 	transition: background-color var(--jeong-quick) var(--jeong-ease), color var(--jeong-quick) var(--jeong-ease);
 }
 
-.jeong.jeong-timeline .jeong-timeline-pill button:hover {
-	background-color: var(--jeong-wash-strong);
+/* Only with a mouse: on a touch screen a tapped button would otherwise stay lit */
+@media (hover: hover) {
+	.jeong.jeong-timeline .jeong-timeline-pill button:hover {
+		background-color: var(--jeong-wash-strong);
+	}
 }
 
 .jeong.jeong-timeline .jeong-timeline-pill button:focus-visible,
@@ -1076,11 +1092,22 @@ body {
 	height: 18px;
 }
 
-/* Today: a persimmon word, like the today line it jumps to */
+/* Today: a persimmon mark and word, like the today line it jumps to */
 .jeong.jeong-timeline .jeong-timeline-pill button.jeong-timeline-today {
 	width: auto;
-	padding: 0 12px;
+	padding: 0 12px 0 10px;
+	display: flex;
+	gap: 6px;
 	color: var(--jeong-persimmon);
+}
+
+.jeong-timeline-today-icon {
+	display: flex;
+}
+
+.jeong.jeong-timeline .jeong-timeline-today-icon svg {
+	width: 16px;
+	height: 16px;
 }
 
 /* The main action in the preview (Open entry), filled persimmon like Record */

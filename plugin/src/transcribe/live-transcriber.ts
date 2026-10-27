@@ -9,7 +9,7 @@ import { normalizeLoudness } from '../audio/loudness';
 const SAMPLE_RATE = 16_000;
 const PARTIAL_EVERY_MS = 500;
 const PAUSE_ENDS_PHRASE_MS = 700;
-const LONGEST_PHRASE_MS = 15_000;
+const LONGEST_PHRASE_MS = 7_000; // long runs without a pause are written in pieces, so the ink dries sooner
 const LEAD_IN_MS = 300; // keep a little audio from just before speech starts
 const SHORTEST_PHRASE_MS = 400; // anything shorter is a cough, a click, or a breath
 
@@ -31,6 +31,8 @@ registerProcessor('jeong-capture', JeongCapture);
 
 export interface LiveTranscriptHandlers {
 	onPartial(text: string): void;
+	/** A phrase has ended and is being written; its onFinal follows (finals arrive in phrase order). */
+	onPhraseEnd(): void;
 	onFinal(text: string): void;
 	/** final is true for finished phrases; quick guesses count as work, not as new speech. */
 	onTiming(ms: number, audioMs: number, final: boolean): void;
@@ -140,6 +142,7 @@ export class LiveTranscriber {
 			this.handlers.onPartial('');
 			return;
 		}
+		this.handlers.onPhraseEnd();
 		const written = this.writer.transcribe(audio);
 		this.finals = this.finals.then(async () => {
 			try {

@@ -155,11 +155,10 @@ button {
 	color: var(--jeong-ink);
 }
 
-.jeong-web-mark {
-	font-family: var(--jeong-display);
-	font-size: 72px;
-	line-height: 1;
-	color: var(--jeong-persimmon);
+.jeong-web-mark svg {
+	display: block;
+	height: 112px;
+	width: auto;
 }
 
 .jeong-web-welcome h1 {
@@ -194,4 +193,30 @@ button {
 	background: transparent;
 	box-shadow: none;
 	color: var(--jeong-ink);
+}
+
+/* Jeong's mark beside the tab's title; on a computer the title shares the bar's line */
+.view-header-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.jeong-web-logo {
+	display: flex;
+}
+
+.jeong-web-logo svg {
+	width: auto;
+	height: 30px;
+}
+
+.jeong-timeline-bar > .view-header-title {
+	margin-right: 12px;
+	color: var(--jeong-text-muted);
+}
+
+/* The theme toggle sits in its own small pill, just after zoom and Today */
+.jeong-timeline-pill + .jeong-timeline-pill + .jeong-timeline-pill {
+	margin-left: 0;
 }
