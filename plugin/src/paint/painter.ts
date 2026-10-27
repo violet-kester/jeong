@@ -1,5 +1,5 @@
 import { App, TFile, normalizePath } from 'obsidian';
-import type { Ollama } from '../compose/ollama';
+import type { ChatResult, Ollama } from '../compose/ollama';
 import type { Metrics } from '../metrics/metrics';
 import { freeName } from '../journal/entry-writer';
 import { ComfyUI, type Workflow } from './comfyui';
@@ -14,10 +14,24 @@ const SCENE_RULES = `You choose one image to paint for someone's journal entry.
 - Pick the one or two things that hold the entry's most important moment, and describe them in one or two short sentences, in English.
 - Use only things in the entry. Don't invent places, people, weather, or objects, and keep each detail true to the moment (if the rain had stopped, there is no rain).
 - Leave out any setting the entry doesn't describe: no view out of a window, no room, no landscape unless the entry mentions it.
-- Make it poetic: you may turn the moment into one quiet visual metaphor (steam becomes a river, a person becomes the weather), built only from things in the entry.
+- Don't add details to make it vivid: no extra objects, clutter, steam, smoke, light or effects the entry doesn't mention.
+- Make it poetic: you may turn the moment into one quiet visual metaphor, but only by reshaping things the entry mentions (if the entry has steam, the steam can become a river); never by adding something new.
 - People are welcome when the moment is about them, as simple figures: say "someone" or "a figure", never a gender unless the entry gives one.
 - Describe only what can be seen: no feelings, no colors, no words, no letters, no signs. (It is painted in one ink.)
 - Write only the description.`;
+
+const CHECK_RULES = `You compare a description of a picture (DESCRIPTION) with the journal entry it came from (ENTRY).
+List every thing in the DESCRIPTION that the ENTRY never mentions: objects, light, steam, smoke, weather, places, clutter. Use the exact words from the DESCRIPTION.
+If everything is in the entry, return an empty list.`;
+
+const CHECK_SCHEMA = {
+	type: 'object',
+	properties: { invented: { type: 'array', items: { type: 'string' } } },
+	required: ['invented'],
+};
+
+/** Words for the person in the picture; the writer is always there, so these are never invented. */
+const PERSON = /^(a |the )?(figure|someone|person|people|man|woman|they|them|their)\b/i;
 
 /**
  * Each painting takes one of these at random, so it's never a centered, literal picture and no two look alike:
@@ -122,20 +136,36 @@ export class Painter {
 		const summary = typeof fm.summary === 'string' ? fm.summary : '';
 		const story = storyText(await this.app.vault.cachedRead(note)).slice(0, 6000);
 		if (!(await this.ollama.isReady())) return [title, summary].filter(Boolean).join('. ');
-		const result = await this.ollama.chat([
+		const entry = story || summary;
+		const scene = await this.ollama.chat([
 			{ role: 'system', content: SCENE_RULES },
-			{ role: 'user', content: `TITLE: ${title}\n\nENTRY:\n${story || summary}` },
+			{ role: 'user', content: `TITLE: ${title}\n\nENTRY:\n${entry}` },
 		]);
+		this.logLlm('scene', scene);
+		// Small models add things to make a picture vivid (steam from a cold drink, a lamp, clutter). A check lists them;
+		// Jeong keeps only the ones really missing from the entry, then drops each clause that holds one
+		const check = await this.ollama.chat(
+			[
+				{ role: 'system', content: CHECK_RULES },
+				{ role: 'user', content: `ENTRY:\n${entry}\n\nDESCRIPTION:\n${scene.content}` },
+			],
+			{ schema: CHECK_SCHEMA },
+		);
+		this.logLlm('scene-check', check);
+		const flagged = parseList(check.content).filter((thing) => !PERSON.test(thing.trim()) && !mentioned(thing, entry));
+		return withoutClauses(scene.content, flagged) || title;
+	}
+
+	private logLlm(task: string, result: ChatResult): void {
 		this.metrics.log({
 			event: 'llm',
-			task: 'scene',
+			task,
 			model: result.model,
 			promptTokens: result.promptTokens,
 			outputTokens: result.outputTokens,
 			ms: Math.round(result.ms),
 			tokensPerSecond: Math.round((result.outputTokens / Math.max(1, result.ms)) * 1000 * 10) / 10,
 		});
-		return result.content || title;
 	}
 
 	/** The built-in FLUX.2 klein workflow, or the person's own, with the prompt filled in and a new seed. */
@@ -168,6 +198,34 @@ export class Painter {
 		});
 		// A new painting replaces the last one; the old file goes to the trash, so it can still be found
 		if (earlier instanceof TFile) await this.app.fileManager.trashFile(earlier);
+	}
+}
+
+/** True when the entry mentions the thing: any of its longer words appears in the entry. */
+function mentioned(thing: string, entry: string): boolean {
+	const text = entry.toLowerCase();
+	return words(thing).some((word) => text.includes(word));
+}
+
+function words(text: string): string[] {
+	return text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [];
+}
+
+/** The description without any clause that names a flagged thing. */
+function withoutClauses(description: string, flagged: string[]): string {
+	if (!flagged.length) return description.trim();
+	const bad = new Set(flagged.flatMap(words));
+	const clauses = description.split(/[,.;:]|\s(?=with |while |as )/).map((clause) => clause.trim()).filter(Boolean);
+	const kept = clauses.filter((clause) => !words(clause).some((word) => bad.has(word)));
+	return kept.length ? `${kept.join(', ')}.` : '';
+}
+
+function parseList(json: string): string[] {
+	try {
+		const { invented } = JSON.parse(json) as { invented?: unknown };
+		return Array.isArray(invented) ? invented.filter((thing): thing is string => typeof thing === 'string') : [];
+	} catch {
+		return [];
 	}
 }
 
