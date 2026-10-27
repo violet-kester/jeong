@@ -11,9 +11,10 @@ import { kleinWorkflow } from './klein-workflow';
 // scene it was painted from (scene), so it's clear it's a painting and not a photo.
 
 const SCENE_RULES = `You choose one image to paint for someone's journal entry.
-- Pick the one or two objects that hold the entry's most important moment, and describe them in one short sentence, in English.
+- Pick the one or two things that hold the entry's most important moment, and describe them in one or two short sentences, in English.
 - Use only things in the entry. Don't invent places, people, weather, or objects, and keep each detail true to the moment (if the rain had stopped, there is no rain).
-- Leave people out unless the moment is impossible without them.
+- Make it poetic: you may turn the moment into one quiet visual metaphor (steam becomes a river, a person becomes the weather), built only from things in the entry.
+- People are welcome when the moment is about them, as simple figures: say "someone" or "a figure", never a gender unless the entry gives one.
 - Describe only what can be seen: no feelings, no colors, no words, no letters, no signs. (It is painted in one ink.)
 - Write only the description.`;
 
@@ -31,7 +32,9 @@ const COMPOSITIONS = [
 ];
 
 /** Asked of every painting, whatever the style. */
-const ARTWORK = 'A small, striking work of art: expressive, poetic, never literal, never centered, never realistic.';
+const ARTWORK =
+	'A small, striking work of art: expressive, poetic, never literal, never centered, never realistic. ' +
+	'Any people are simple, abstract figures with smooth, faceless heads, genderless unless the subject says otherwise.';
 
 export type PaintProgress = 'scene' | 'painting' | 'not-ready' | 'done' | 'failed';
 
