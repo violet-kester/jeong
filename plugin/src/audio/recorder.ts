@@ -19,7 +19,7 @@ export class Recorder {
 	analyser: AnalyserNode | null = null;
 	mimeType = '';
 
-	private stream: MediaStream | null = null;
+	stream: MediaStream | null = null;
 	private context: AudioContext | null = null;
 	private mediaRecorder: MediaRecorder | null = null;
 	private chunks: Blob[] = [];

@@ -31,6 +31,37 @@ const copyStatic = {
 	},
 };
 
+// Files imported as "./something?worker" are bundled on their own (as an ES module)
+// and inlined into main.js as text, because a plugin ships as one main.js file.
+// The plugin then starts them as Web Workers from a blob URL.
+const inlineWorker = {
+	name: 'inline-worker',
+	setup(build) {
+		build.onResolve({ filter: /\?worker$/ }, (args) => ({
+			path: path.resolve(args.resolveDir, args.path.replace(/\?worker$/, '') + '.ts'),
+			namespace: 'inline-worker',
+		}));
+		build.onLoad({ filter: /.*/, namespace: 'inline-worker' }, async (args) => {
+			const result = await esbuild.build({
+				entryPoints: [args.path],
+				bundle: true,
+				write: false,
+				format: 'esm',
+				platform: 'browser',
+				target: 'es2022',
+				minify: prod,
+				logLevel: 'warning',
+				metafile: true,
+			});
+			return {
+				contents: `export default ${JSON.stringify(result.outputFiles[0].text)};`,
+				loader: 'js',
+				watchFiles: Object.keys(result.metafile.inputs).map((file) => path.resolve(file)),
+			};
+		});
+	},
+};
+
 const context = await esbuild.context({
 	banner: {
 		js: banner,
@@ -60,7 +91,7 @@ const context = await esbuild.context({
 	treeShaking: true,
 	outfile: path.join(outDir, 'main.js'),
 	minify: prod,
-	plugins: [copyStatic],
+	plugins: [inlineWorker, copyStatic],
 });
 
 if (prod) {
