@@ -16,15 +16,22 @@ Koreans speak of *miun jeong* (미운 정) and *goun jeong* (고운 정), the *j
 
 An open source journal you read as a timeline instead of a list. Speak with it and it crafts your story.
 
-- **Talk** about your day in a quick voice note, or chat with a voice agent. Your words appear on the page as you speak.
-- **Capture** voice, photos, and writing effortlessly. Every recording is kept, along with a word-for-word transcript.
-- **Read** your words back as a story. Jeong crafts each transcript into a journal entry in your own voice.
-    - Later, add to it or change it just by talking.
-- **See** each story illustrated. Jeong paints the moment as a woodcut, taking cues from any photos you add.
+- **Talk** about your day in a quick voice note or chat with a voice agent.
+    - Your words appear on the page as you speak.
+- **Capture** voice, photos, and writing effortlessly.
+    - Every recording is saved with a word-for-word transcript.
+- **Read** your words back as a story.
+    - Jeong crafts each transcript into a journal entry in your own voice.
+    - Add to your entries or change them just by talking.
+- **See** each story illustrated.
+    - Jeong paints the moment as a woodcut taking cues from any photos you add.
 - **Zoom** from a single day out to your whole life.
-- **Keep** it for good. Each entry is a folder of plain files: the recording, the raw transcript, the story, and its pictures.
-    - Like Obsidian's notes, it fits on a thumb drive and will still open decades from now.
-- **Own** it inside Obsidian. Your entries are ordinary notes in the vault folder you choose.
+- **Keep** it for good.
+    - Your Jeong journal is organized into folder of plain files.
+        - The audio, the raw transcript/story markdown files, and all pictures are saved.
+    - Like your Obsidian vault, it fits on a thumb drive and will still open decades from now.
+- **Own** it inside Obsidian.
+    - Your entries are ordinary notes in the vault folder you choose.
 - **Completely private**: encrypted, and shared only with your connections.
 
 One entry, as it sits in your vault:
