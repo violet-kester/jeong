@@ -298,6 +298,15 @@ export class RecordModal extends Modal {
 		);
 	}
 
+	/** Frees the speech models' memory on the graphics card, for painting. */
+	private releaseTranscribers(): void {
+		this.moonshine?.dispose();
+		this.whisper?.dispose();
+		this.moonshine = null;
+		this.whisper = null;
+		this.transcriber = null;
+	}
+
 	private engineEvents(kind: 'live' | 'final', row: HTMLElement): EngineEvents {
 		return {
 			onStage: (stage) => row.setText(t(stage === 'loading' ? 'check.loading' : 'check.warming')),
@@ -343,6 +352,7 @@ export class RecordModal extends Modal {
 		}
 		void leave(this.openAction);
 		this.horizon?.start(this.recorder.analyser);
+		if (!this.transcriber && !this.onPhone) this.startTranscribers();
 		await this.transcriber?.listen(this.recorder.stream);
 		this.setButton(true);
 		this.status.setText(t('record.recording'));
@@ -621,6 +631,8 @@ export class RecordModal extends Modal {
 
 		brush.addEventListener('click', () => {
 			if (painter.isPainting(note)) return;
+			// The painting model needs the graphics card; Record more loads the speech models again
+			this.releaseTranscribers();
 			brush.disabled = true;
 			brush.addClass('is-painting');
 			label.setText(t('paint.painting'));

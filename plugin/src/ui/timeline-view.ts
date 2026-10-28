@@ -17,21 +17,35 @@ export const TIMELINE_VIEW = 'jeong-timeline';
 // Drag to move around; pinch, Ctrl + wheel, or the − and + buttons stretch the period out or squeeze it in.
 // A numeral takes you one step closer: a month to that month, a day to its week, a day in a week to that day.
 
-const CARD_WIDTH = 220;
-const CARD_HEIGHT = 92;
-const PHOTO_HEIGHT = 132; // the main photo (or painting), full width under the summary
-const CARD_GAP = 10;
-const STEM = 18; // the gap between the line and the nearest cards
-const STEM_OFFSET = 14; // how far into the card its stem sits
 const NUMERALS_HEIGHT = 170;
 const PHOTO_TURN_MS = 4000; // how long each picture shows before the next one fades in
 const MAX_CARDS_PER_DAY = 8; // more than this on one day fold into "+N"
 const MIN_HEIGHT = 420; // the numerals plus a row of cards above and below the line
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 12;
-/** How wide a day is at least, in month, week, and day views, so cards have room to stand side by side. */
-const DAY_WIDTH: Record<Scale, number> = { year: 0, month: 90, week: CARD_WIDTH + 40, day: 24 * 110 };
-const PREVIEW_REST_MS = 600; // the pointer rests this long on a card before its preview shows, so passing over doesn't flash it
+/** How wide a day is at least, in month, week, and day views, in card widths, so cards have room to stand side by side. */
+const DAY_WIDTH: Record<Scale, number> = { year: 0, month: 0.4, week: 1.2, day: 12 };
+/** Zooming in brings the cards closer as fast as it stretches time, up to max; zooming out never shrinks them. */
+const CARD_SCALE = { min: 1, max: 4, power: 1 };
+
+/**
+ * The sizes cards are laid out with, in pixels. They come from styles.css (Jeong's fluid scale, so they
+ * follow the pane's width), times the zoom's card scale.
+ */
+interface Layout {
+	cardWidth: number;
+	/** A card with no picture: date, title, and two lines of summary. */
+	cardHeight: number;
+	/** What a picture adds to a card. */
+	photoHeight: number;
+	/** Between cards. */
+	gap: number;
+	/** Between the line and the nearest cards. */
+	stem: number;
+	/** How far into the card its stem sits. */
+	stemOffset: number;
+}
+const PREVIEW_REST_MS = 300; // the pointer rests this long on a card before its preview shows, so passing over doesn't flash it
 
 type Scale = 'year' | 'month' | 'week' | 'day';
 const SCALES: Scale[] = ['year', 'month', 'week', 'day'];
@@ -40,9 +54,9 @@ const COLUMN: Record<Scale, 'month' | 'day' | 'hour'> = { year: 'month', month: 
 const CLOSER: Record<Scale, Scale | null> = { year: 'month', month: 'week', week: 'day', day: null };
 
 export class TimelineView extends ItemView {
-	private scale: Scale = 'year';
+	private scale: Scale = 'week';
 	/** The first day of the year, month, or week shown. */
-	private start = moment().startOf('year');
+	private start = moment().startOf('week');
 	private scalePicker!: HTMLSelectElement;
 	private periodPicker!: HTMLElement;
 	private selected: string | null = null;
@@ -56,6 +70,8 @@ export class TimelineView extends ItemView {
 	private yearLabel!: HTMLElement;
 	private dragging = { active: false, moved: false, x: 0, y: 0, left: 0, top: 0 };
 	private zoom = 1;
+	private themeButton?: HTMLButtonElement;
+	private layout: Layout = { cardWidth: 220, cardHeight: 92, photoHeight: 132, gap: 10, stem: 18, stemOffset: 14 };
 	private zoomFrame = 0;
 	private axisY = 0;
 	/** Centre on today once the pane has its real size (a new pane can open before it has one). */
@@ -113,6 +129,12 @@ export class TimelineView extends ItemView {
 		const today = views.createEl('button', { cls: 'jeong-timeline-today' });
 		setIcon(today.createSpan({ cls: 'jeong-timeline-today-icon' }), 'locate-fixed');
 		today.createSpan({ text: t('timeline.today') });
+		// Light and dark, one tap away at the end of the bar; the theme in settings is the default
+		this.themeButton = views.createEl('button', { cls: 'jeong-timeline-theme' });
+		this.themeButton.addEventListener('click', () => this.plugin.showTheme(isDark() ? 'light' : 'dark'));
+		this.showThemeButton();
+		// Following Obsidian, the button changes when Obsidian's own theme does
+		this.registerEvent(this.app.workspace.on('css-change', () => this.showThemeButton()));
 		zoomOut.addEventListener('click', () => this.setZoom(this.zoom / 1.6));
 		zoomIn.addEventListener('click', () => this.setZoom(this.zoom * 1.6));
 		earlier.addEventListener('click', () => this.showPeriod(this.start.clone().subtract(1, this.scale)));
@@ -146,6 +168,14 @@ export class TimelineView extends ItemView {
 		this.applyInk();
 
 		this.goToToday();
+	}
+
+	/** The light and dark button offers whichever the timeline isn't showing. */
+	showThemeButton(): void {
+		if (!this.themeButton) return;
+		const dark = isDark();
+		setIcon(this.themeButton, dark ? 'sun' : 'moon');
+		this.themeButton.setAttribute('aria-label', t(dark ? 'timeline.lightTheme' : 'timeline.darkTheme'));
 	}
 
 	/** Shows paintings in the ink color from settings. */
@@ -252,7 +282,7 @@ export class TimelineView extends ItemView {
 	private dayX(entry: EntryInfo): number {
 		if (this.scale === 'day') return this.x(this.offset(moment(`${entry.date} ${timeOf(entry)}`)));
 		const day = this.offset(moment(entry.date));
-		return this.scale === 'week' ? this.x(day) + STEM_OFFSET + CARD_GAP : this.x(day + 0.5);
+		return this.scale === 'week' ? this.x(day) + this.layout.stemOffset + this.layout.gap : this.x(day + 0.5);
 	}
 
 	/** Pixels from the left edge for a number of days into the period. */
@@ -318,14 +348,22 @@ export class TimelineView extends ItemView {
 		this.scalePicker.value = this.scale;
 		this.buildPeriodPicker();
 		this.track.empty();
-		const width = this.scale === 'year' ? Math.max(this.scroller.clientWidth * 2.2, 1800) : Math.max(this.scroller.clientWidth, this.days() * DAY_WIDTH[this.scale] + 80);
+		this.layout = this.measureLayout();
+		const width =
+			this.scale === 'year'
+				? Math.max(this.scroller.clientWidth * 2.2, 1800)
+				: Math.max(this.scroller.clientWidth, this.days() * DAY_WIDTH[this.scale] * this.layout.cardWidth + 80);
 		this.track.style.width = `${width * this.zoom}px`;
 
-		// The day, top to bottom: the page goes from cream mornings to a walnut night with stars,
-		// and the sky ruler down the left edge runs from dawn to night, with noon at the line
+		// The day, top to bottom, brightest at the line: the page darkens toward the top and down to a walnut
+		// night with stars, and the sky ruler down the left edge runs midnight to midnight, with noon at the line
 		this.track.createDiv({ cls: 'jeong-timeline-sky' });
-		const stars = this.track.createDiv({ cls: 'jeong-timeline-stars' });
-		for (let i = 0; i < 3; i++) stars.createDiv({ cls: 'jeong-timeline-twinkle' });
+		// Stars at night: at the bottom, behind everything, and a fainter few at the top, over the blur under the
+		// dates, where behind it they'd blur away to nothing
+		for (const cls of ['jeong-timeline-stars', 'jeong-timeline-stars is-top']) {
+			const stars = this.track.createDiv({ cls });
+			for (let i = 0; i < 3; i++) stars.createDiv({ cls: 'jeong-timeline-twinkle' });
+		}
 
 		// Columns with huge numerals: the months of a year, the days of a month or week, or the hours of a day.
 		// A numeral takes you one step closer: a month to that month, a day to its week, or a week's day to that day.
@@ -339,8 +377,10 @@ export class TimelineView extends ItemView {
 			column.style.width = `${right - left}px`;
 			column.style.setProperty('--jeong-month-width', `${right - left}px`);
 			if (unit === 'day' && day.isSame(today)) column.addClass('is-today');
-			const numeral = column.createEl('b', { text: day.format(unit === 'month' ? 'MM' : unit === 'day' ? 'D' : 'h') });
-			column.createEl('small', { text: day.format(unit === 'month' ? 'MMMM' : unit === 'hour' ? 'A' : this.scale === 'week' ? 'dddd' : 'ddd') });
+			// The numeral and its name stay at the top together while a busy stretch scrolls up and down
+			const head = column.createDiv({ cls: 'jeong-timeline-month-head' });
+			const numeral = head.createEl('b', { text: day.format(unit === 'month' ? 'MM' : unit === 'day' ? 'D' : 'h') });
+			head.createEl('small', { text: day.format(unit === 'month' ? 'MMMM' : unit === 'hour' ? 'A' : this.scale === 'week' ? 'dddd' : 'ddd') });
 			const closer = CLOSER[this.scale];
 			if (closer) {
 				const at = day.clone();
@@ -352,6 +392,11 @@ export class TimelineView extends ItemView {
 				});
 			}
 		}
+
+		// Cards scrolling up under the dates go blurry beneath them, more and more, in layers; full blur reaches the bottom of the dates
+		const veil = createDiv({ cls: 'jeong-timeline-veil' });
+		for (let i = 0; i < 6; i++) veil.createDiv({ cls: 'jeong-timeline-veil-layer' });
+		this.track.prepend(veil);
 
 		const axis = this.track.createDiv({ cls: 'jeong-timeline-axis' });
 
@@ -382,19 +427,25 @@ export class TimelineView extends ItemView {
 		// up or down as a busy day needs (the timeline scrolls both ways).
 		const morning = shown.filter((e) => timeOf(e) < '12:00').sort((a, b) => timeOf(b).localeCompare(timeOf(a)));
 		const afternoon = shown.filter((e) => timeOf(e) >= '12:00').sort((a, b) => timeOf(a).localeCompare(timeOf(b)));
-		const above = stack(morning, (e) => this.dayX(e));
-		const below = stack(afternoon, (e) => this.dayX(e));
+		const above = stack(morning, (e) => this.dayX(e), this.layout);
+		const below = stack(afternoon, (e) => this.dayX(e), this.layout);
 		const reach = (cards: StackedCard[]) => Math.max(0, ...cards.map((card) => card.offset + card.height));
 
 		this.measureTop();
+		// Where the dates end, for the band under them (on the track, so the faint stars at the top fade out
+		// just below it too); cards at rest stand clear of the band, which fades out a little further down
+		const head = this.track.querySelector<HTMLElement>('.jeong-timeline-month-head');
+		const datesBottom = head ? Math.round(head.getBoundingClientRect().bottom - this.scroller.getBoundingClientRect().top) : this.top + NUMERALS_HEIGHT;
+		this.track.setCssProps({ '--jeong-veil': `${datesBottom}px` });
+		const clear = datesBottom + this.cssLength('--jeong-veil-fade');
 		const height = Math.max(this.scroller.clientHeight, this.top + MIN_HEIGHT);
-		const axisY = Math.max(this.top + Math.round((height - this.top) * 0.56), this.top + NUMERALS_HEIGHT + STEM + reach(above));
+		const axisY = Math.max(this.top + Math.round((height - this.top) * 0.56), clear + this.layout.stem + reach(above));
 		this.axisY = axisY;
 		axis.style.top = `${axisY}px`;
 		this.track.style.setProperty('--jeong-axis', `${axisY}px`);
 
 		for (const { entry, x, offset, height: cardHeight, isAbove } of [...above.map((c) => ({ ...c, isAbove: true })), ...below.map((c) => ({ ...c, isAbove: false }))]) {
-			const top = isAbove ? axisY - STEM - offset - cardHeight : axisY + STEM + offset;
+			const top = isAbove ? axisY - this.layout.stem - offset - cardHeight : axisY + this.layout.stem + offset;
 
 			const stem = this.track.createDiv({ cls: 'jeong-timeline-stem' });
 			stem.style.left = `${x}px`;
@@ -404,7 +455,7 @@ export class TimelineView extends ItemView {
 			dot.style.left = `${x}px`;
 			dot.style.top = `${axisY}px`;
 
-			this.entryCard(entry, x - STEM_OFFSET, top, cardHeight);
+			this.entryCard(entry, x - this.layout.stemOffset, top, cardHeight);
 		}
 
 		// Days with more entries than fit get a small "+N"
@@ -416,12 +467,49 @@ export class TimelineView extends ItemView {
 		}
 
 		// Tall enough for the lowest card, with room under it for the Record button (and, on phones, Obsidian's toolbar)
-		this.track.style.height = `${Math.max(height, axisY + STEM + reach(below) + (Platform.isMobile ? 200 : 96))}px`;
+		this.track.style.height = `${Math.max(height, axisY + this.layout.stem + reach(below) + (Platform.isMobile ? 200 : 96))}px`;
 
 		if (!entries.length) {
 			this.track.createDiv({ cls: 'jeong-timeline-empty', text: t('timeline.empty') });
 			this.preview.hide();
 		}
+	}
+
+	/** How much bigger or smaller cards are drawn at this zoom. */
+	private get cardScale(): number {
+		return Math.min(CARD_SCALE.max, Math.max(CARD_SCALE.min, this.zoom ** CARD_SCALE.power));
+	}
+
+	/** A length token from styles.css, in pixels, at this pane's width. */
+	private cssLength(token: string): number {
+		const ruler = this.track.createDiv({ cls: 'jeong-timeline-probe' });
+		ruler.setCssProps({ width: `var(${token})` });
+		const width = ruler.getBoundingClientRect().width;
+		ruler.remove();
+		return width;
+	}
+
+	/** Measures a sample card and the card tokens in styles.css, at this pane's width, for laying out cards. */
+	private measureLayout(): Layout {
+		const probe = this.track.createDiv({ cls: 'jeong-timeline-entry jeong-timeline-probe' });
+		const text = probe.createDiv({ cls: 'jeong-timeline-entry-text' });
+		text.createDiv({ cls: 'jeong-timeline-entry-meta', text: 'Oct 27 · 12:00 AM' });
+		text.createDiv({ cls: 'jeong-timeline-entry-title', text: 'Title' });
+		// Long enough to fill both of the summary's lines on any card
+		text.createDiv({ cls: 'jeong-timeline-entry-snippet', text: 'A summary that runs on and on. '.repeat(12) });
+		const card = probe.getBoundingClientRect();
+		const size = (token: string) => this.cssLength(token);
+		const scale = this.cardScale;
+		const layout = {
+			cardWidth: card.width * scale,
+			cardHeight: Math.ceil(card.height) * scale,
+			photoHeight: size('--jeong-card-photo') * scale,
+			gap: size('--jeong-card-gap') * scale,
+			stem: size('--jeong-card-stem') * scale,
+			stemOffset: size('--jeong-card-stem-offset') * scale,
+		};
+		probe.remove();
+		return layout;
 	}
 
 	/** A small card: main photo, date and time, title, and a short snippet. */
@@ -430,8 +518,11 @@ export class TimelineView extends ItemView {
 		const card = this.track.createDiv({ cls: 'jeong-timeline-entry', attr: { role: 'button', tabindex: '0', 'data-path': entry.file.path } });
 		card.style.left = `${left}px`;
 		card.style.top = `${top}px`;
-		card.style.width = `${CARD_WIDTH}px`;
-		card.style.height = `${height}px`;
+		// Laid out at its zoomed size, drawn at its own size and scaled up or down to that
+		const scale = this.cardScale;
+		card.style.width = `${this.layout.cardWidth / scale}px`;
+		card.style.height = `${height / scale}px`;
+		card.style.setProperty('--jeong-card-scale', String(scale));
 		if (entry.status === 'recorded') card.addClass('is-waiting');
 		if (entry.file.path === this.selected) card.addClass('is-selected');
 
@@ -510,7 +601,12 @@ export class TimelineView extends ItemView {
 			attr: { 'aria-label': painting ? t('paint.painting') : t(entry.painting ? 'paint.again' : 'paint.button') },
 		});
 		setIcon(brush, 'paintbrush');
-		if (painting) card.addClass('is-painting');
+		if (painting) {
+			card.addClass('is-painting');
+			// A faint brush rides the wash of ink across the card while it paints
+			const rider = card.createDiv({ cls: 'jeong-brush-rider', attr: { 'aria-hidden': 'true' } });
+			setIcon(rider.createSpan({ cls: 'jeong-brush-rider-icon' }), 'jeong-brush');
+		}
 		brush.addEventListener('click', (e) => {
 			e.stopPropagation();
 			if (!this.dragging.moved) this.illustrate(entry);
@@ -672,20 +768,26 @@ interface StackedCard {
  * Stacks cards away from the line in the order given. Each card takes the first gap, nearest the line,
  * that's tall enough for it among the cards it would overlap; cards with photos or a painting are taller.
  */
-function stack(entries: EntryInfo[], dayX: (entry: EntryInfo) => number): StackedCard[] {
+function stack(entries: EntryInfo[], dayX: (entry: EntryInfo) => number, layout: Layout): StackedCard[] {
 	const placed: StackedCard[] = [];
 	for (const entry of entries) {
 		const x = dayX(entry);
-		const height = CARD_HEIGHT + (entry.photos.length || entry.painting ? PHOTO_HEIGHT : 0);
-		const inTheWay = placed.filter((card) => Math.abs(card.x - x) < CARD_WIDTH + CARD_GAP).sort((a, b) => a.offset - b.offset);
+		const height = layout.cardHeight + (entry.photos.length || entry.painting ? layout.photoHeight : 0);
+		const inTheWay = placed.filter((card) => Math.abs(card.x - x) < layout.cardWidth + layout.gap).sort((a, b) => a.offset - b.offset);
 		let offset = 0;
 		for (const card of inTheWay) {
-			if (offset + height + CARD_GAP <= card.offset) break;
-			offset = Math.max(offset, card.offset + card.height + CARD_GAP);
+			if (offset + height + layout.gap <= card.offset) break;
+			offset = Math.max(offset, card.offset + card.height + layout.gap);
 		}
 		placed.push({ entry, x, offset, height });
 	}
 	return placed;
+}
+
+/** True when Jeong is showing its dark colors: chosen, or following Obsidian's dark theme. */
+function isDark(): boolean {
+	const body = document.body;
+	return body.hasClass('jeong-theme-dark') || (!body.hasClass('jeong-theme-light') && body.hasClass('theme-dark'));
 }
 
 /** An entry's time of day; entries without one count as noon. */

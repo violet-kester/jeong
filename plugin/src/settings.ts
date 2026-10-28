@@ -47,15 +47,42 @@ export type JeongTheme = 'obsidian' | 'light' | 'dark';
 export type LiveMode = 'hybrid' | 'moonshine';
 
 /**
- * Woodcut × Munch: an expressionist woodcut with Munch's trembling, swirling lines, strong blacks against bold
- * whites, and faces left blank. Black ink only, because the model holds to one color reliably only in black;
- * Jeong shows it in the ink color from settings.
+ * A raw expressionist woodcut: jagged gouged lines, the whole sheet carved, its fill made from the scene's own
+ * textures (no swirls, steam or smoke unless the scene has them), and faces left blank. Black ink only, because
+ * the model holds to one color reliably only in black; Jeong shows it in the ink color from settings.
  */
 export const PAINT_STYLE =
+	'Expressionist woodcut: jagged gouged lines and harsh solid shapes, raw, graphic and full of energy, carved by hand, never neat, never a clean drawing. ' +
+	'The whole sheet is alive with carved marks: the space around the subject is cut into expressive patterns made from the textures in the scene itself, its surfaces, weather, light and movement. ' +
+	'No swirls unless something in the scene swirls; no steam or smoke unless the scene has them. Strong solid blacks against bold whites, high contrast. ' +
+	'Any person has a blank, faceless head and no sign of gender. ' +
+	'One ink only, black, on plain off-white paper. No text, no letters, no words, no signature, no initials, no borders, no frame.';
+
+/** Earlier built-in styles: a vault that still has one of these, unedited, gets the current one. */
+export const OLD_PAINT_STYLES = [
+	'Expressionist woodcut in the spirit of Edvard Munch, full of energy: bold gouged lines and confident solid shapes, carved by hand, loose and alive, never neat, never a clean drawing. ' +
+		'The whole sheet is alive with carved marks. The space around the subject is filled with expressive rhythmic patterns made from the scene itself: ' +
+		'rain becomes slanting cuts, a road becomes rippling grain, steam becomes rising ribbons, a tablecloth becomes its weave, light becomes radiating strokes. ' +
+		'Use swirls only where something really swirls. Strong solid blacks against bold whites, high contrast. ' +
+		'Any person has a blank, faceless head and no sign of gender. ' +
+		'One ink only, black, on plain off-white paper. No text, no letters, no words, no signature, no borders, no frame.',
+	'Expressionist woodcut, full of energy: bold gouged lines and confident solid shapes, loose and alive, never neat. ' +
+		'Strong solid blacks against bold bare whites, high contrast. Every gouge follows the form it describes: ' +
+		'the grain of wood, the weave of cloth, the fall of rain, the edge of a shadow. No decorative swirls or ' +
+		'patterns to fill space; wide areas of plain bare paper are welcome. ' +
+		'Any face is a blank shape: no eyes, no nose, no mouth. ' +
+		'One ink only, black, on plain off-white paper. No text, no letters, no signature, no borders, no frame.',
+	'Expressionist woodcut: jagged gouged lines and harsh solid shapes, raw and urgent, never neat. ' +
+		'Strong solid blacks against bold bare whites, high contrast. Every gouge follows the form it describes: ' +
+		'the grain of wood, the weave of cloth, the fall of rain, the edge of a shadow. No decorative swirls or ' +
+		'patterns to fill space; wide areas of plain bare paper are welcome. ' +
+		'Any face is a blank shape: no eyes, no nose, no mouth. ' +
+		'One ink only, black, on plain off-white paper. No text, no letters, no signature, no borders, no frame.',
 	'Expressionist woodcut: jagged gouged lines and harsh solid shapes, raw, urgent and wild, never neat; swirling, undulating lines ' +
-	'in the spirit of Edvard Munch trembling through the whole sheet. Strong solid blacks against bold bare whites, high contrast. ' +
-	'Any face is a blank shape: no eyes, no nose, no mouth. ' +
-	'One ink only, black, on plain off-white paper. No text, no letters, no signature, no borders, no frame.';
+		'in the spirit of Edvard Munch trembling through the whole sheet. Strong solid blacks against bold bare whites, high contrast. ' +
+		'Any face is a blank shape: no eyes, no nose, no mouth. ' +
+		'One ink only, black, on plain off-white paper. No text, no letters, no signature, no borders, no frame.',
+];
 
 export const DEFAULT_SETTINGS: JeongSettings = {
 	journalFolder: 'spaces/jeong',
@@ -116,7 +143,8 @@ export class JeongSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.theme)
 					.onChange(async (value) => {
 						this.plugin.settings.theme = value === 'light' || value === 'dark' ? value : 'obsidian';
-						this.plugin.applyTheme();
+						// The timeline's light and dark button gives way to the new default
+						this.plugin.showTheme(null);
 						await this.plugin.saveSettings();
 					}),
 			);

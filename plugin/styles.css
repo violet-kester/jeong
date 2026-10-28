@@ -69,6 +69,11 @@ body.jeong-theme-dark .jeong {
 	--jeong-stars-3: var(--jeong-stars-dark-3);
 }
 
+/* Midnight at the top of the timeline's day: its night, a little lifted. After the theme colors, so it follows them */
+.jeong {
+	--jeong-day-midnight: color-mix(in srgb, var(--jeong-day-night) 55%, var(--jeong-day-noon));
+}
+
 /* The Theme setting: Jeong's own paper or ink, whichever theme Obsidian uses.
    Sets the Obsidian colors that Jeong's views use, so buttons and borders match too. */
 body.jeong-theme-light .jeong {
@@ -114,8 +119,65 @@ body {
 	--jeong-gentle: 550ms; /* things arriving: previews, windows, panes */
 	--jeong-slow: 900ms; /* a title settling in */
 	--jeong-drift: 1800ms; /* photos taking turns, a whole page of ink drying */
-	--jeong-ink-step: 60ms; /* live words dry one after another, this far apart */
-	--jeong-rise: 10px; /* how far things travel as they arrive */
+	--jeong-ink-step: 30ms; /* live words dry one after another, this far apart */
+	--jeong-rise: var(--jeong-space-xs); /* how far things travel as they arrive */
+}
+
+/* ---- Scale: fluid type and space, after utopia.fyi ----
+   Every size grows and shrinks smoothly with the width of Jeong's own pane, from 320 to 1240 px wide,
+   so the timeline in a narrow side pane is as well proportioned as one filling the window. Type steps
+   -2 to 5 run from 16 px at a 1.2 ratio to 19 px at 1.25; space steps 3xs to 3xl from a 15 px to a 20 px
+   step. Use these tokens, never one-off sizes; only hairline borders stay in px, so they stay crisp.
+   The timeline reads the card tokens to lay cards out (src/ui/timeline-view.ts, measureLayout). */
+.jeong-timeline,
+.modal.jeong {
+	container-type: inline-size;
+	font-size: var(--jeong-step-0);
+}
+
+body {
+	--jeong-step--2: clamp(0.6944rem, 0.6716rem + 0.1140cqi, 0.76rem);
+	--jeong-step--1: clamp(0.8333rem, 0.7928rem + 0.2029cqi, 0.95rem);
+	--jeong-step-0: clamp(1rem, 0.9348rem + 0.3261cqi, 1.1875rem);
+	--jeong-step-1: clamp(1.2rem, 1.1011rem + 0.4946cqi, 1.4844rem);
+	--jeong-step-2: clamp(1.44rem, 1.2955rem + 0.7226cqi, 1.8555rem);
+	--jeong-step-3: clamp(1.728rem, 1.5223rem + 1.0284cqi, 2.3193rem);
+	--jeong-step-4: clamp(2.0736rem, 1.7864rem + 1.4358cqi, 2.8992rem);
+	--jeong-step-5: clamp(2.4883rem, 2.0933rem + 1.9750cqi, 3.624rem);
+
+	--jeong-space-3xs: clamp(0.2344rem, 0.2072rem + 0.1359cqi, 0.3125rem);
+	--jeong-space-2xs: clamp(0.4688rem, 0.4144rem + 0.2717cqi, 0.625rem);
+	--jeong-space-xs: clamp(0.7031rem, 0.6216rem + 0.4076cqi, 0.9375rem);
+	--jeong-space-s: clamp(0.9375rem, 0.8288rem + 0.5435cqi, 1.25rem);
+	--jeong-space-m: clamp(1.4062rem, 1.2432rem + 0.8152cqi, 1.875rem);
+	--jeong-space-l: clamp(1.875rem, 1.6576rem + 1.0870cqi, 2.5rem);
+	--jeong-space-xl: clamp(2.8125rem, 2.4864rem + 1.6304cqi, 3.75rem);
+	--jeong-space-2xl: clamp(3.75rem, 3.3152rem + 2.1739cqi, 5rem);
+	--jeong-space-3xl: clamp(5.625rem, 4.9728rem + 3.2609cqi, 7.5rem);
+
+	/* Timeline cards */
+	--jeong-card-width: calc(var(--jeong-space-3xl) * 2.3);
+	--jeong-card-photo: calc(var(--jeong-space-3xl) * 1.35); /* what a picture adds under the summary */
+	--jeong-card-gap: var(--jeong-space-xs);
+	--jeong-card-stem: var(--jeong-space-s); /* between the line and the nearest cards */
+	--jeong-card-stem-offset: var(--jeong-space-s); /* how far into the card its stem sits */
+
+	/* How far below the dates the blur under them fades out; cards at rest stand below it */
+	--jeong-veil-fade: var(--jeong-space-3xl);
+}
+
+/* For measuring the card tokens at this pane's width; never seen */
+.jeong-timeline-probe {
+	position: absolute;
+	top: 0;
+	left: 0;
+	visibility: hidden;
+	pointer-events: none;
+}
+
+/* The sample card, at a card's width */
+.jeong-timeline-entry.jeong-timeline-probe {
+	width: var(--jeong-card-width);
 }
 
 @keyframes jeong-arrive {
@@ -167,7 +229,7 @@ body {
 .jeong-comparison {
 	width: 100%;
 	display: grid;
-	gap: 6px;
+	gap: var(--jeong-space-2xs);
 	color: var(--jeong-ink);
 }
 
@@ -185,7 +247,7 @@ body {
 	font-family: var(--jeong-body);
 	font-size: 1.15em;
 	line-height: 1.6;
-	padding-left: 12px;
+	padding-left: var(--jeong-space-xs);
 	border-left: 2px solid var(--jeong-persimmon);
 }
 
@@ -198,8 +260,8 @@ body {
 .jeong-test-script {
 	font-size: 1.2em;
 	line-height: 1.7;
-	padding: 12px 16px;
-	border-radius: 6px;
+	padding: var(--jeong-space-xs) var(--jeong-space-s);
+	border-radius: 0.375rem;
 	background: var(--background-secondary);
 }
 
@@ -218,7 +280,7 @@ body {
 .jeong-perf-table th,
 .jeong-perf-table td {
 	text-align: left;
-	padding: 6px 8px;
+	padding: var(--jeong-space-2xs) var(--jeong-space-2xs);
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -231,9 +293,9 @@ body {
 /* Recording window: laid out like a letter, on plain paper or ink (not the timeline's sky).
    The date and photos run down the left; a ruled page fills the right, with the record button at its foot. */
 .jeong.jeong-record {
-	width: min(1100px, 92vw);
+	width: min(68.75rem, 92vw);
 	max-width: none;
-	height: min(820px, 88vh);
+	height: min(51.25rem, 88vh);
 	padding: 0;
 	overflow: hidden;
 	border: 1px solid var(--jeong-hairline);
@@ -256,12 +318,12 @@ body {
 }
 
 .jeong.jeong-record.has-story {
-	width: min(1440px, 95vw);
+	width: min(90rem, 95vw);
 }
 
 .jeong-record .modal-content {
 	display: grid;
-	grid-template-columns: 210px minmax(0, 1fr) auto;
+	grid-template-columns: 13.125rem minmax(0, 1fr) auto;
 	height: 100%;
 	padding: 0;
 	margin: 0;
@@ -270,8 +332,8 @@ body {
 .jeong-entry-side {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 40px 24px 24px 30px;
+	gap: var(--jeong-space-3xs);
+	padding: var(--jeong-space-xl) var(--jeong-space-m) var(--jeong-space-m) var(--jeong-space-l);
 	border-right: 1px solid var(--jeong-hairline);
 	background: var(--jeong-entry-side);
 }
@@ -279,14 +341,14 @@ body {
 .jeong-entry-day {
 	font-family: var(--jeong-numerals);
 	font-weight: 200;
-	font-size: 104px;
+	font-size: 6.5rem;
 	line-height: 0.85;
 	color: var(--jeong-ink);
 	font-variant-numeric: tabular-nums;
 }
 
 .jeong-entry-month {
-	margin-top: 8px;
+	margin-top: var(--jeong-space-2xs);
 	font-family: var(--jeong-display);
 	font-weight: 700;
 	font-size: 1.2em;
@@ -307,7 +369,7 @@ body {
 	flex-direction: column;
 	min-width: 0;
 	min-height: 0;
-	padding: 40px 44px 18px;
+	padding: var(--jeong-space-xl) var(--jeong-space-xl) var(--jeong-space-s);
 }
 
 .jeong-entry-heading {
@@ -319,7 +381,7 @@ body {
 
 /* The entry's title: arrives at the top of the page once the story names it */
 .jeong-entry-title {
-	margin-bottom: 8px;
+	margin-bottom: var(--jeong-space-2xs);
 	font-family: var(--jeong-display);
 	font-weight: 700;
 	font-size: 2.3em;
@@ -335,9 +397,9 @@ body {
 @keyframes jeong-title-arrive {
 	from {
 		opacity: 0;
-		transform: translateY(10px);
+		transform: translateY(var(--jeong-space-xs));
 		letter-spacing: 0.04em;
-		filter: blur(3px);
+		filter: blur(0.1875rem);
 	}
 
 	to {
@@ -357,17 +419,17 @@ body {
 .jeong-entry-heading.is-saved::before {
 	content: "";
 	display: inline-block;
-	width: 9px;
-	height: 9px;
-	margin-right: 10px;
-	vertical-align: 3px;
+	width: var(--jeong-space-2xs);
+	height: var(--jeong-space-2xs);
+	margin-right: var(--jeong-space-xs);
+	vertical-align: 0.1875rem;
 	border-radius: 50%;
 	background: #7F9C8A; /* celadon: done, and safe */
 }
 
 /* Above the finished page: how it was written and how long you talked */
 .jeong-entry-note {
-	margin-top: 10px;
+	margin-top: var(--jeong-space-xs);
 	font-family: var(--jeong-mono);
 	font-size: 0.72em;
 	letter-spacing: 0.07em;
@@ -378,10 +440,10 @@ body {
 .jeong-entry-heading.is-recording::before {
 	content: "";
 	display: inline-block;
-	width: 9px;
-	height: 9px;
-	margin-right: 10px;
-	vertical-align: 3px;
+	width: var(--jeong-space-2xs);
+	height: var(--jeong-space-2xs);
+	margin-right: var(--jeong-space-xs);
+	vertical-align: 0.1875rem;
 	border-radius: 50%;
 	background: var(--jeong-persimmon);
 }
@@ -391,25 +453,25 @@ body {
 	flex: 1;
 	min-height: 0;
 	max-height: none;
-	margin-top: 18px;
+	margin-top: var(--jeong-space-s);
 	overflow-y: auto;
 	font-size: 1.3em;
-	line-height: 46px;
-	background-image: linear-gradient(transparent 40px, var(--jeong-hairline) 40px, var(--jeong-hairline) 41px, transparent 41px);
-	background-size: 100% 46px;
+	line-height: 2.875rem;
+	background-image: linear-gradient(transparent 2.5rem, var(--jeong-hairline) 2.5rem, var(--jeong-hairline) 2.5625rem, transparent 2.5625rem);
+	background-size: 100% 2.875rem;
 	background-attachment: local;
 }
 
 .jeong.jeong-record .jeong-transcript.more-above {
-	mask-image: linear-gradient(transparent, #000 48px);
+	mask-image: linear-gradient(transparent, #000 3rem);
 }
 
 .jeong.jeong-record .jeong-transcript.more-below {
-	mask-image: linear-gradient(#000 calc(100% - 48px), transparent);
+	mask-image: linear-gradient(#000 calc(100% - 3rem), transparent);
 }
 
 .jeong.jeong-record .jeong-transcript.more-above.more-below {
-	mask-image: linear-gradient(transparent, #000 48px, #000 calc(100% - 48px), transparent);
+	mask-image: linear-gradient(transparent, #000 3rem, #000 calc(100% - 3rem), transparent);
 }
 
 .jeong.jeong-record .jeong-transcript-partial {
@@ -419,7 +481,7 @@ body {
 
 /* Written words dry from wet persimmon to ink, smoothly, with no fade in between */
 .jeong.jeong-record .jeong-transcript-final {
-	animation: jeong-ink-dry var(--jeong-drift) var(--jeong-ease-in-out);
+	animation: jeong-ink-dry var(--jeong-slow) var(--jeong-ease-in-out);
 }
 
 /* Live phrases dry word by word, from the first word on, like a line of ink drying behind the pen */
@@ -428,7 +490,7 @@ body {
 }
 
 .jeong.jeong-record .jeong-ink-word {
-	animation: jeong-ink-dry var(--jeong-slow) var(--jeong-ease-in-out) both;
+	animation: jeong-ink-dry var(--jeong-gentle) var(--jeong-ease-in-out) both;
 	animation-delay: calc(var(--i) * var(--jeong-ink-step));
 }
 
@@ -457,9 +519,9 @@ body {
 	/* the status, the time, and the button labels all sit on one line at the bottom */
 	align-items: flex-end;
 	justify-content: space-between;
-	gap: 20px;
-	min-height: 170px;
-	margin-top: 10px;
+	gap: var(--jeong-space-m);
+	min-height: 10.625rem;
+	margin-top: var(--jeong-space-xs);
 }
 
 /* Your voice: drawn across the whole foot, behind the status and the button */
@@ -486,8 +548,8 @@ body {
 	position: relative;
 	display: flex;
 	align-items: flex-end;
-	gap: 22px;
-	padding-right: 12px;
+	gap: var(--jeong-space-m);
+	padding-right: var(--jeong-space-xs);
 }
 
 .jeong-entry-action {
@@ -495,7 +557,7 @@ body {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 16px;
+	gap: var(--jeong-space-s);
 }
 
 .jeong-entry-action.is-hidden {
@@ -504,8 +566,8 @@ body {
 
 .jeong-entry-action > .jeong-record-timer,
 .jeong-entry-action-label {
-	height: 30px;
-	line-height: 30px;
+	height: var(--jeong-space-l);
+	line-height: 1.875rem;
 	white-space: nowrap;
 }
 
@@ -513,7 +575,7 @@ body {
 .jeong-entry-foot .jeong-record-status {
 	display: flex;
 	align-items: center;
-	min-height: 30px;
+	min-height: var(--jeong-space-l);
 	line-height: 1.45;
 	white-space: normal;
 }
@@ -527,8 +589,8 @@ body {
 
 /* Open entry: a hanji button with a book; round in the recording window, a pill on the timeline's preview */
 .jeong button.jeong-open-button {
-	width: 96px;
-	height: 96px;
+	width: var(--jeong-space-3xl);
+	height: var(--jeong-space-3xl);
 	padding: 0;
 	display: grid;
 	place-items: center;
@@ -536,7 +598,7 @@ body {
 	border-radius: 50%;
 	background-color: #F1E8D6;
 	color: #2A2724;
-	box-shadow: 0 0 18px -6px rgba(0, 0, 0, 0.45);
+	box-shadow: 0 0 1.125rem -0.375rem rgba(0, 0, 0, 0.45);
 	cursor: pointer;
 }
 
@@ -545,26 +607,26 @@ body {
 }
 
 .jeong button.jeong-open-button svg {
-	width: 32px;
-	height: 32px;
+	width: var(--jeong-space-l);
+	height: var(--jeong-space-l);
 }
 
 .jeong button.jeong-open-button.is-pill {
 	width: auto;
-	height: 46px;
-	padding: 0 24px 0 20px;
+	height: var(--jeong-space-xl);
+	padding: 0 var(--jeong-space-m) 0 var(--jeong-space-m);
 	display: inline-flex;
-	gap: 10px;
+	gap: var(--jeong-space-xs);
 	justify-self: start;
-	border-radius: 999px;
+	border-radius: 999rem;
 	font-family: var(--jeong-display);
 	font-weight: 700;
 	font-size: 1.05em;
 }
 
 .jeong button.jeong-open-button.is-pill svg {
-	width: 20px;
-	height: 20px;
+	width: var(--jeong-space-m);
+	height: var(--jeong-space-m);
 }
 
 .jeong-open-button-icon {
@@ -588,8 +650,8 @@ body {
 
 /* The big round button: persimmon with a microphone; while recording, hanji with a stop square */
 .jeong.jeong-record button.jeong-record-button {
-	width: 96px;
-	height: 96px;
+	width: var(--jeong-space-3xl);
+	height: var(--jeong-space-3xl);
 	padding: 0;
 	display: grid;
 	place-items: center;
@@ -598,7 +660,7 @@ body {
 	background-color: var(--jeong-persimmon);
 	color: #FBF3E2;
 	/* an even glow, not a drop shadow, so the button sits centred in its ring */
-	box-shadow: 0 0 18px -4px rgba(120, 40, 20, 0.55);
+	box-shadow: 0 0 1.125rem -0.25rem rgba(120, 40, 20, 0.55);
 	cursor: pointer;
 	transition: background-color var(--jeong-quick) var(--jeong-ease), box-shadow var(--jeong-quick) var(--jeong-ease);
 }
@@ -620,7 +682,7 @@ body {
 .jeong.jeong-record button.jeong-record-button.is-more {
 	background-color: var(--jeong-entry-bg);
 	color: var(--jeong-persimmon);
-	box-shadow: inset 0 0 0 2px var(--jeong-persimmon);
+	box-shadow: inset 0 0 0 0.125rem var(--jeong-persimmon);
 }
 
 .jeong.jeong-record button.jeong-record-button.is-more:not(:disabled):hover {
@@ -634,22 +696,22 @@ body {
 }
 
 .jeong.jeong-record .jeong-record-button-icon svg {
-	width: 34px;
-	height: 34px;
+	width: var(--jeong-space-l);
+	height: var(--jeong-space-l);
 }
 
 .jeong.jeong-record button.jeong-record-button.is-recording .jeong-record-button-icon svg {
-	width: 26px;
-	height: 26px;
+	width: var(--jeong-space-m);
+	height: var(--jeong-space-m);
 	fill: currentColor;
 }
 
 /* The story pane: your story beside your words, once the entry is saved */
 .jeong-entry-story {
-	width: 400px;
+	width: 25rem;
 	min-height: 0;
 	overflow-y: auto;
-	padding: 40px 34px 24px;
+	padding: var(--jeong-space-xl) var(--jeong-space-l) var(--jeong-space-m);
 	border-left: 1px solid var(--jeong-hairline);
 	background: var(--jeong-entry-side);
 }
@@ -663,14 +725,14 @@ body {
 }
 
 .jeong-entry-story-waiting {
-	margin-top: 18px;
+	margin-top: var(--jeong-space-s);
 	font-style: italic;
 	color: var(--jeong-text-muted);
 }
 
 .jeong-entry-story-summary {
-	margin-top: 14px;
-	padding-bottom: 16px;
+	margin-top: var(--jeong-space-s);
+	padding-bottom: var(--jeong-space-s);
 	border-bottom: 1px solid var(--jeong-hairline);
 	font-style: italic;
 	font-size: 0.95em;
@@ -679,7 +741,7 @@ body {
 }
 
 .jeong-entry-story-body {
-	margin-top: 22px;
+	margin-top: var(--jeong-space-m);
 	font-family: var(--jeong-body);
 	font-size: 1.08em;
 	line-height: 1.75;
@@ -700,8 +762,8 @@ body {
 .jeong-entry-side .jeong-photos {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
-	margin-top: 30px;
+	gap: var(--jeong-space-2xs);
+	margin-top: var(--jeong-space-l);
 	padding: 0;
 	border: 0;
 	background: none;
@@ -709,7 +771,7 @@ body {
 
 .jeong-entry-side .jeong-photos.is-dragging {
 	outline: 1.5px dashed var(--jeong-persimmon);
-	outline-offset: 6px;
+	outline-offset: var(--jeong-space-2xs);
 }
 
 .jeong-entry-side .jeong-photos-strip {
@@ -717,18 +779,18 @@ body {
 }
 
 .jeong-entry-side .jeong-photos-item {
-	width: 70px;
-	height: 70px;
-	border-radius: 3px;
+	width: var(--jeong-space-2xl);
+	height: var(--jeong-space-2xl);
+	border-radius: 0.1875rem;
 }
 
 .jeong .jeong-entry-side .jeong-photos button.jeong-photos-drop {
-	width: 70px;
-	height: 70px;
+	width: var(--jeong-space-2xl);
+	height: var(--jeong-space-2xl);
 	min-height: 0;
 	padding: 0;
 	border: 1px dashed var(--jeong-hairline);
-	border-radius: 3px;
+	border-radius: 0.1875rem;
 }
 
 .jeong-entry-side .jeong-photos-drop span:not(.jeong-photos-icon) {
@@ -736,11 +798,11 @@ body {
 }
 
 .jeong-entry-label {
-	margin-top: 8px;
+	margin-top: var(--jeong-space-2xs);
 }
 
 .jeong-record-more {
-	padding-top: 8px;
+	padding-top: var(--jeong-space-2xs);
 }
 
 .jeong-record-more summary {
@@ -754,8 +816,8 @@ body {
 
 .jeong-record-details {
 	display: grid;
-	gap: 4px;
-	padding-top: 10px;
+	gap: var(--jeong-space-3xs);
+	padding-top: var(--jeong-space-xs);
 	font-family: var(--font-monospace);
 	font-size: 0.8em;
 	color: var(--jeong-text-muted);
@@ -764,7 +826,7 @@ body {
 
 .jeong-record-detail-label {
 	display: inline-block;
-	min-width: 150px;
+	min-width: 9.375rem;
 	color: var(--jeong-ink);
 }
 
@@ -781,13 +843,13 @@ body {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	padding: 38px 24px 18px;
+	padding: var(--jeong-space-l) var(--jeong-space-m) var(--jeong-space-s);
 	text-align: center;
 }
 
 .jeong-voice-date {
 	/* clear of the close button on either side */
-	padding: 0 44px;
+	padding: 0 var(--jeong-space-xl);
 	font-family: var(--jeong-mono);
 	font-size: 0.75em;
 	letter-spacing: 0.08em;
@@ -800,7 +862,7 @@ body {
 	position: relative;
 	flex: none;
 	width: 100%;
-	height: 330px;
+	height: 20.625rem;
 	margin-top: auto;
 	display: grid;
 	place-items: center;
@@ -808,13 +870,13 @@ body {
 
 .jeong-voice-orb .jeong-entry-control {
 	padding: 0;
-	gap: 26px;
+	gap: var(--jeong-space-m);
 }
 
 .jeong-voice-orb .jeong-record-timer {
 	/* under the rings (clear of the outer ring at its fullest), without nudging the button off centre */
 	position: absolute;
-	top: calc(100% + 84px);
+	top: calc(100% + var(--jeong-space-3xl));
 	font-size: 2.4em;
 }
 
@@ -835,7 +897,7 @@ body {
 .jeong-voice .jeong-record-status {
 	position: static;
 	max-width: 34ch;
-	margin-top: 10px;
+	margin-top: var(--jeong-space-xs);
 	margin-bottom: auto;
 	font-style: italic;
 	line-height: 1.55;
@@ -853,9 +915,9 @@ body {
 	flex-wrap: wrap;
 	justify-content: center;
 	align-items: center;
-	gap: 10px;
-	margin-top: 22px;
-	padding-top: 16px;
+	gap: var(--jeong-space-xs);
+	margin-top: var(--jeong-space-m);
+	padding-top: var(--jeong-space-s);
 	border-top: 1px solid var(--jeong-hairline);
 }
 
@@ -863,7 +925,7 @@ body {
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: center;
-	gap: 8px;
+	gap: var(--jeong-space-2xs);
 	width: auto;
 	padding: 0;
 	border: 0;
@@ -875,21 +937,21 @@ body {
 }
 
 .jeong-voice-foot .jeong-photos-item {
-	width: 44px;
-	height: 44px;
-	border-radius: 999px;
+	width: var(--jeong-space-xl);
+	height: var(--jeong-space-xl);
+	border-radius: 999rem;
 }
 
 .jeong .jeong-voice-foot .jeong-photos button.jeong-photos-drop,
 .jeong-voice-foot .jeong-record-more summary {
 	display: inline-flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--jeong-space-2xs);
 	min-height: 0;
-	height: 40px;
-	padding: 0 18px;
+	height: var(--jeong-space-xl);
+	padding: 0 var(--jeong-space-s);
 	border: 0;
-	border-radius: 999px;
+	border-radius: 999rem;
 	background-color: var(--jeong-wash-strong);
 	box-shadow: none;
 	color: var(--jeong-text-muted);
@@ -916,8 +978,8 @@ body {
 
 .jeong-voice-pill-icon svg,
 .jeong-voice-foot .jeong-photos-icon svg {
-	width: 16px;
-	height: 16px;
+	width: var(--jeong-space-s);
+	height: var(--jeong-space-s);
 }
 
 .jeong-voice-foot .jeong-record-more[open] .jeong-record-details {
@@ -926,17 +988,17 @@ body {
 
 /* Phones: one column, the date across the top, inset evenly from every edge of the screen */
 .is-mobile .jeong.jeong-record {
-	--jeong-inset: 10px;
+	--jeong-inset: var(--jeong-space-xs);
 	width: calc(100vw - 2 * var(--jeong-inset));
-	height: calc(100% - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2 * var(--jeong-inset));
-	margin: calc(env(safe-area-inset-top, 0px) + var(--jeong-inset)) auto calc(env(safe-area-inset-bottom, 0px) + var(--jeong-inset));
-	border-radius: 18px;
+	height: calc(100% - env(safe-area-inset-top, 0rem) - env(safe-area-inset-bottom, 0rem) - 2 * var(--jeong-inset));
+	margin: calc(env(safe-area-inset-top, 0rem) + var(--jeong-inset)) auto calc(env(safe-area-inset-bottom, 0rem) + var(--jeong-inset));
+	border-radius: 1.125rem;
 }
 
 /* The help text gets its own line under the buttons, clear of the waveform */
 .is-mobile .jeong-entry-foot {
 	flex-wrap: wrap;
-	row-gap: 14px;
+	row-gap: var(--jeong-space-s);
 }
 
 .is-mobile .jeong-entry-foot .jeong-entry-control {
@@ -959,23 +1021,23 @@ body {
 	flex-direction: row;
 	flex-wrap: wrap;
 	align-items: baseline;
-	gap: 6px 12px;
-	padding: 24px 22px 20px;
+	gap: var(--jeong-space-2xs) var(--jeong-space-xs);
+	padding: var(--jeong-space-m) var(--jeong-space-m) var(--jeong-space-m);
 	border-right: 0;
 	border-bottom: 1px solid var(--jeong-hairline);
 }
 
 .is-mobile .jeong-entry-day {
-	font-size: 56px;
+	font-size: 3.5rem;
 }
 
 .is-mobile .jeong-entry-side .jeong-photos {
-	margin-top: 14px;
+	margin-top: var(--jeong-space-s);
 	flex-basis: 100%;
 }
 
 .is-mobile .jeong-entry-main {
-	padding: 22px 22px 14px;
+	padding: var(--jeong-space-m) var(--jeong-space-m) var(--jeong-space-s);
 }
 
 /* Timeline: a printed chart of the year */
@@ -985,32 +1047,33 @@ body {
 	padding: 0 !important;
 	overflow: hidden;
 	position: relative;
-	background: var(--jeong-day-morning);
+	/* midnight, like the top of the sky, so nothing lighter shows where the timeline fades under the header */
+	background: var(--jeong-day-midnight);
 }
 
 /* Full bleed: the timeline runs right up under the header and bar, which float over it on frosted glass.
-   The glass carries a little of the dawn sky at the very top and melts into the timeline just below the
+   The glass carries a little of the night sky at the very top and melts into the timeline just below the
    controls. It stops short of the sky ruler, which runs clear to the top edge. */
 .jeong-timeline::before {
 	content: "";
 	position: absolute;
 	top: 0;
-	left: 6px;
+	left: var(--jeong-space-2xs);
 	right: 0;
-	height: calc(var(--jeong-timeline-top, 0px) + 28px);
+	height: calc(var(--jeong-timeline-top, 0rem) + var(--jeong-space-l));
 	z-index: 5;
 	pointer-events: none;
-	background: linear-gradient(color-mix(in srgb, var(--jeong-sky-dawn) 16%, transparent), color-mix(in srgb, var(--jeong-day-morning) 55%, transparent) 70%, transparent);
-	-webkit-backdrop-filter: blur(6px);
-	backdrop-filter: blur(6px);
+	background: linear-gradient(color-mix(in srgb, var(--jeong-sky-night) 16%, transparent), color-mix(in srgb, var(--jeong-day-midnight) 55%, transparent) 70%, transparent);
+	-webkit-backdrop-filter: blur(0.375rem);
+	backdrop-filter: blur(0.375rem);
 	mask-image: linear-gradient(#000 40%, transparent);
 }
 
 .jeong-timeline-bar {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 12px 20px;
+	gap: var(--jeong-space-2xs);
+	padding: var(--jeong-space-xs) var(--jeong-space-m);
 	/* see-through, floating over the top of the timeline, so the morning sky runs right up to the edge */
 	position: absolute;
 	top: 0;
@@ -1025,7 +1088,7 @@ body {
 }
 
 .jeong-timeline-year {
-	padding: 0 6px;
+	padding: 0 var(--jeong-space-2xs);
 	/* trimmed to the numerals themselves, so they sit in the true middle of the pill */
 	text-box: trim-both cap alphabetic;
 	font-family: var(--jeong-numerals);
@@ -1041,13 +1104,13 @@ body {
 .jeong-timeline-pill {
 	display: flex;
 	align-items: center;
-	gap: 2px;
-	padding: 3px;
-	border-radius: 999px;
+	gap: 0.125rem;
+	padding: 0.1875rem;
+	border-radius: 999rem;
 	background-color: var(--jeong-wash);
-	box-shadow: inset 0 0 0 1px var(--jeong-hairline);
-	-webkit-backdrop-filter: blur(10px);
-	backdrop-filter: blur(10px);
+	box-shadow: inset 0 0 0 0.0625rem var(--jeong-hairline);
+	-webkit-backdrop-filter: blur(0.625rem);
+	backdrop-filter: blur(0.625rem);
 }
 
 .jeong-timeline-pill + .jeong-timeline-pill {
@@ -1062,10 +1125,10 @@ body {
 }
 
 .jeong.jeong-timeline .jeong-timeline-scale select {
-	height: 34px;
-	padding: 0 30px 0 14px;
+	height: var(--jeong-space-l);
+	padding: 0 var(--jeong-space-l) 0 var(--jeong-space-s);
 	border: 0;
-	border-radius: 999px;
+	border-radius: 999rem;
 	appearance: none;
 	background: transparent;
 	box-shadow: none;
@@ -1084,21 +1147,21 @@ body {
 
 .jeong-timeline-scale-icon {
 	position: absolute;
-	right: 10px;
+	right: var(--jeong-space-xs);
 	display: flex;
 	pointer-events: none;
 	color: var(--jeong-text-muted);
 }
 
 .jeong-timeline-scale-icon svg {
-	width: 14px;
-	height: 14px;
+	width: var(--jeong-space-s);
+	height: var(--jeong-space-s);
 }
 
 .jeong-timeline-pill-divider {
-	width: 1px;
-	height: 20px;
-	margin: 0 4px;
+	width: 0.0625rem;
+	height: var(--jeong-space-m);
+	margin: 0 var(--jeong-space-3xs);
 	background: var(--jeong-hairline);
 }
 
@@ -1107,7 +1170,7 @@ body {
 	position: relative;
 	display: flex;
 	align-items: center;
-	border-radius: 999px;
+	border-radius: 999rem;
 	transition: background-color var(--jeong-quick) var(--jeong-ease);
 }
 
@@ -1155,13 +1218,13 @@ body {
 
 /* Inside a pill, buttons are bare icons; a soft circle shows on hover */
 .jeong.jeong-timeline .jeong-timeline-pill button {
-	width: 34px;
-	height: 34px;
+	width: var(--jeong-space-l);
+	height: var(--jeong-space-l);
 	padding: 0;
 	display: grid;
 	place-items: center;
 	border: 0;
-	border-radius: 999px;
+	border-radius: 999rem;
 	background-color: transparent;
 	box-shadow: none;
 	color: var(--jeong-ink);
@@ -1182,21 +1245,21 @@ body {
 
 .jeong.jeong-timeline .jeong-timeline-pill button:focus-visible,
 .jeong button.jeong-button-primary:focus-visible {
-	outline: 3px solid #D49A36;
-	outline-offset: 2px;
+	outline: 0.1875rem solid #D49A36;
+	outline-offset: 0.125rem;
 }
 
 .jeong.jeong-timeline .jeong-timeline-pill svg {
-	width: 18px;
-	height: 18px;
+	width: var(--jeong-space-s);
+	height: var(--jeong-space-s);
 }
 
 /* Today: a persimmon mark and word, like the today line it jumps to */
 .jeong.jeong-timeline .jeong-timeline-pill button.jeong-timeline-today {
 	width: auto;
-	padding: 0 12px 0 10px;
+	padding: 0 var(--jeong-space-xs) 0 var(--jeong-space-xs);
 	display: flex;
-	gap: 6px;
+	gap: var(--jeong-space-2xs);
 	color: var(--jeong-persimmon);
 }
 
@@ -1205,15 +1268,15 @@ body {
 }
 
 .jeong.jeong-timeline .jeong-timeline-today-icon svg {
-	width: 16px;
-	height: 16px;
+	width: var(--jeong-space-s);
+	height: var(--jeong-space-s);
 }
 
 /* The main action in the preview (Open entry), filled persimmon like Record */
 .jeong button.jeong-button-primary {
-	height: 38px;
+	height: var(--jeong-space-l);
 	border: 0;
-	border-radius: 999px;
+	border-radius: 999rem;
 	background-color: var(--jeong-persimmon);
 	box-shadow: none;
 	color: #FBF3E2;
@@ -1235,9 +1298,8 @@ body {
 	user-select: none;
 	/* whatever scrolls up under the header and bar fades away slowly, over a long, soft stretch, so nothing
 	   is cut off at an edge; the sky ruler (the first 6px) stays clear all the way up */
-	mask-image:
-		linear-gradient(#000, #000) left / 6px 100% no-repeat,
-		linear-gradient(transparent, rgba(0, 0, 0, 0.2) calc(var(--jeong-timeline-top, 0px) - 24px), #000 calc(var(--jeong-timeline-top, 0px) + 72px));
+	mask-image: linear-gradient(#000, #000) left / 0.375rem 100% no-repeat,
+		linear-gradient(transparent, rgba(0, 0, 0, 0.2) calc(var(--jeong-timeline-top, 0rem) - 1.5rem), #000 calc(var(--jeong-timeline-top, 0rem) + 4.5rem));
 }
 
 .jeong-timeline-track {
@@ -1245,11 +1307,18 @@ body {
 	--jeong-night: calc(100% - var(--jeong-axis)); /* from the line to the bottom */
 	position: relative;
 	height: 100%;
-	min-height: 320px;
+	min-height: 20rem;
 	background:
-		/* the sky lightly echoed: a sunset band, then indigo settling at the bottom */
+		/* the sky lightly echoed: a sunset band below the line, then indigo settling at the bottom */
 		linear-gradient(transparent calc(var(--jeong-axis) + var(--jeong-night) * 0.14), var(--jeong-day-sunset) calc(var(--jeong-axis) + var(--jeong-night) * 0.5), var(--jeong-day-dusk) 100%),
-		linear-gradient(var(--jeong-day-morning) 0, var(--jeong-day-noon) var(--jeong-axis), var(--jeong-day-night) 100%);
+		/* one day around the line: dark at midnight above and below, lighter by 6 AM and 6 PM, brightest at noon */
+		linear-gradient(
+			var(--jeong-day-midnight) 0,
+			var(--jeong-day-noon) calc(var(--jeong-axis) * 0.5),
+			color-mix(in srgb, var(--jeong-day-morning) 85%, var(--jeong-sky-noon)) var(--jeong-axis),
+			var(--jeong-day-noon) calc(var(--jeong-axis) + var(--jeong-night) * 0.5),
+			var(--jeong-day-night) 100%
+		);
 }
 
 /* Obsidian's header strip (back, forward, title) floats see-through over the timeline too */
@@ -1280,7 +1349,7 @@ body {
 .jeong.jeong-timeline button.jeong-timeline-record {
 	position: absolute;
 	left: 50%;
-	bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+	bottom: calc(var(--jeong-space-m) + env(safe-area-inset-bottom, 0rem));
 	transform: translateX(-50%);
 	z-index: 5;
 }
@@ -1289,31 +1358,31 @@ body {
 .jeong.jeong-timeline button.jeong-timeline-record {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: var(--jeong-space-xs);
 	height: auto;
-	padding: 14px 28px 14px 22px;
+	padding: var(--jeong-space-s) var(--jeong-space-l) var(--jeong-space-s) var(--jeong-space-m);
 	border: 0;
-	border-radius: 999px;
+	border-radius: 999rem;
 	background-color: var(--jeong-persimmon);
 	color: #FBF3E2;
 	font-family: var(--jeong-body);
 	font-size: 1.15em;
 	letter-spacing: 0.02em;
-	box-shadow: 0 2px 4px rgba(42, 20, 10, 0.25), 0 10px 24px -8px rgba(42, 20, 10, 0.55);
+	box-shadow: 0 0.125rem 0.25rem rgba(42, 20, 10, 0.25), 0 0.625rem 1.5rem -0.5rem rgba(42, 20, 10, 0.55);
 	cursor: pointer;
 	transition: transform var(--jeong-quick) var(--jeong-ease), box-shadow var(--jeong-quick) var(--jeong-ease), background-color var(--jeong-quick) var(--jeong-ease);
 }
 
 .jeong.jeong-timeline button.jeong-timeline-record:hover {
 	background-color: #C24E38;
-	transform: translateX(-50%) translateY(-1px);
-	box-shadow: 0 3px 6px rgba(42, 20, 10, 0.25), 0 14px 28px -8px rgba(42, 20, 10, 0.6);
+	transform: translateX(-50%) translateY(-0.0625rem);
+	box-shadow: 0 0.1875rem 0.375rem rgba(42, 20, 10, 0.25), 0 0.875rem 1.75rem -0.5rem rgba(42, 20, 10, 0.6);
 }
 
 .jeong.jeong-timeline button.jeong-timeline-record:focus-visible,
 .jeong.jeong-record button.jeong-record-button:focus-visible {
-	outline: 3px solid var(--jeong-ochre, #D49A36);
-	outline-offset: 3px;
+	outline: 0.1875rem solid var(--jeong-ochre, #D49A36);
+	outline-offset: 0.1875rem;
 }
 
 .jeong-timeline-record-icon,
@@ -1323,14 +1392,14 @@ body {
 
 .jeong-timeline-record-icon svg,
 .jeong-record-button-icon svg {
-	width: 22px;
-	height: 22px;
+	width: var(--jeong-space-m);
+	height: var(--jeong-space-m);
 }
 
 /* Phones: the top bar fits on one line */
 .is-mobile .jeong-timeline-bar {
-	gap: 6px;
-	padding: 10px 12px;
+	gap: var(--jeong-space-2xs);
+	padding: var(--jeong-space-xs) var(--jeong-space-xs);
 	flex-wrap: wrap;
 }
 
@@ -1349,13 +1418,13 @@ body {
 }
 
 .is-mobile .jeong.jeong-timeline .jeong-timeline-pill button {
-	width: 32px;
-	height: 32px;
+	width: var(--jeong-space-l);
+	height: var(--jeong-space-l);
 }
 
 .is-mobile .jeong.jeong-timeline .jeong-timeline-pill button.jeong-timeline-today {
 	width: auto;
-	padding: 0 10px;
+	padding: 0 var(--jeong-space-xs);
 }
 
 .is-mobile .jeong-timeline-year {
@@ -1364,46 +1433,58 @@ body {
 
 /* Phones: the preview is a sheet with even margins, above Obsidian's toolbar */
 .is-mobile .jeong-timeline-card {
-	left: 12px;
-	right: 12px;
+	left: var(--jeong-space-xs);
+	right: var(--jeong-space-xs);
 	width: auto;
-	bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+	bottom: calc(env(safe-area-inset-bottom, 0rem) + var(--jeong-space-3xl));
 	max-height: 60%;
 }
 
 /* Phones: Obsidian's toolbar floats at the bottom of the screen, so the Record button sits above it */
 .is-mobile .jeong.jeong-timeline button.jeong-timeline-record {
-	bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+	bottom: calc(env(safe-area-inset-bottom, 0rem) + var(--jeong-space-3xl));
 }
 
 /* The sky ruler: the whole day in a strip at the left edge, staying put while the year scrolls by */
 .jeong-timeline-sky {
 	position: sticky;
 	left: 0;
-	width: 6px;
+	width: var(--jeong-space-2xs);
 	height: 100%;
 	z-index: 3;
 }
 
 .jeong-timeline-sky {
+	/* one whole day, brightest at the line: midnight, dawn, morning, noon at the line, afternoon, sunset, dusk, midnight */
 	background: linear-gradient(
-		var(--jeong-sky-dawn) 0,
-		var(--jeong-sky-morning) calc(var(--jeong-axis) * 0.4),
-		var(--jeong-sky-noon) var(--jeong-axis),
-		var(--jeong-sky-afternoon) calc(var(--jeong-axis) + var(--jeong-night) * 0.32),
-		var(--jeong-sky-sunset) calc(var(--jeong-axis) + var(--jeong-night) * 0.55),
-		var(--jeong-sky-dusk) calc(var(--jeong-axis) + var(--jeong-night) * 0.77),
+		var(--jeong-sky-night) 0,
+		var(--jeong-sky-night) calc(var(--jeong-axis) * 0.12),
+		var(--jeong-sky-dusk) calc(var(--jeong-axis) * 0.3),
+		var(--jeong-sky-dawn) calc(var(--jeong-axis) * 0.5),
+		var(--jeong-sky-morning) calc(var(--jeong-axis) * 0.68),
+		var(--jeong-sky-noon) calc(var(--jeong-axis) * 0.86),
+		var(--jeong-sky-noon) calc(var(--jeong-axis) + var(--jeong-night) * 0.12),
+		var(--jeong-sky-afternoon) calc(var(--jeong-axis) + var(--jeong-night) * 0.3),
+		var(--jeong-sky-sunset) calc(var(--jeong-axis) + var(--jeong-night) * 0.5),
+		var(--jeong-sky-dusk) calc(var(--jeong-axis) + var(--jeong-night) * 0.7),
+		var(--jeong-sky-night) calc(var(--jeong-axis) + var(--jeong-night) * 0.88),
 		var(--jeong-sky-night) 100%
 	);
 }
 
-/* Stars, only once the night gets dark */
+/* Stars at night. At the bottom they come out after sunset (about 7 PM) and are all out by night. */
 .jeong-timeline-stars {
 	position: absolute;
 	inset: 0;
 	pointer-events: none;
 	background-image: var(--jeong-stars);
-	mask-image: linear-gradient(transparent calc(var(--jeong-axis) + var(--jeong-night) * 0.1), #000 calc(var(--jeong-axis) + var(--jeong-night) * 0.7));
+	mask-image: linear-gradient(transparent calc(var(--jeong-axis) + var(--jeong-night) * 0.55), #000 calc(var(--jeong-axis) + var(--jeong-night) * 0.88));
+}
+
+/* At the top, fainter ones over the blur under the dates (behind it they'd blur away), fading out below it */
+.jeong-timeline-stars.is-top {
+	z-index: 3;
+	mask-image: linear-gradient(rgba(0, 0, 0, 0.7) 0, rgba(0, 0, 0, 0.7) var(--jeong-veil, 10rem), transparent calc(var(--jeong-veil, 10rem) + var(--jeong-space-3xl) * 2.5));
 }
 
 /* Three layers of twinkling stars, each fading on its own slow rhythm */
@@ -1423,28 +1504,41 @@ body {
 
 @media (prefers-reduced-motion: no-preference) {
 	.jeong-timeline-twinkle {
-		animation: jeong-twinkle 3.6s ease-in-out infinite;
+		animation: jeong-twinkle 3.2s var(--jeong-ease-in-out) infinite;
 	}
 
 	.jeong-timeline-twinkle:nth-child(2) {
-		animation-duration: 4.7s;
-		animation-delay: -1.6s;
+		animation-duration: 4.1s;
+		animation-delay: -1.4s;
 	}
 
 	.jeong-timeline-twinkle:nth-child(3) {
-		animation-duration: 6.1s;
-		animation-delay: -3.9s;
+		animation-duration: 5.3s;
+		animation-delay: -3.1s;
 	}
 }
 
+/* Rests dim, swells to a brief peak, then fades slowly, like a star catching the eye */
 @keyframes jeong-twinkle {
 	0%,
 	100% {
+		opacity: 0.18;
+	}
+
+	38% {
+		opacity: 0.18;
+	}
+
+	52% {
 		opacity: 1;
 	}
 
-	50% {
-		opacity: 0.05;
+	60% {
+		opacity: 0.9;
+	}
+
+	82% {
+		opacity: 0.3;
 	}
 }
 
@@ -1452,19 +1546,62 @@ body {
 	position: absolute;
 	top: 0;
 	bottom: 0;
-	padding: calc(var(--jeong-timeline-top, 0px) + 4px) 0 0 10px;
+	padding: calc(var(--jeong-timeline-top, 0rem) + var(--jeong-space-3xs)) 0 0 var(--jeong-space-xs);
 	border-left: 1px solid var(--background-modifier-border);
 }
 
-.jeong-timeline-month b {
-	/* the numerals stay at the top while a busy stretch scrolls up and down */
+/*
+ * Cards that scroll up under the dates go very blurry beneath them, still plainly there, so the dates stay
+ * clear and the soft edge says there's more above. The blur is full down to the bottom of the dates
+ * (measured by the timeline), then fades out over a long stretch below them: six layers, each a little
+ * stronger, each fading in a little higher up, so it builds without an edge. No tint, so nothing marks
+ * where the band is but the softness itself.
+ */
+.jeong-timeline-veil {
 	position: sticky;
-	top: calc(var(--jeong-timeline-top, 0px) + 4px);
+	top: 0;
+	left: 0;
+	width: 100cqi;
+	height: calc(var(--jeong-veil, 10rem) + var(--jeong-veil-fade));
+	margin-bottom: calc(-1 * (var(--jeong-veil, 10rem) + var(--jeong-veil-fade)));
+	/* over every card, even one hovered or selected; its preview opens in the corner as usual */
+	z-index: 3;
+	pointer-events: none;
+	/* blur only, no tint: a tint never quite matches the sky it floats over, and reads as a band */
+}
+
+.jeong-timeline-veil-layer {
+	position: absolute;
+	inset: 0;
+	backdrop-filter: blur(var(--jeong-veil-blur));
+	-webkit-backdrop-filter: blur(var(--jeong-veil-blur));
+	mask-image: linear-gradient(
+		#000 calc(100% - var(--jeong-veil-fade) * var(--jeong-veil-to)),
+		transparent calc(100% - var(--jeong-veil-fade) * var(--jeong-veil-from))
+	);
+}
+
+/* light steps first and spread out, so the blur starts barely there and gathers slowly, then quickly near the dates */
+.jeong-timeline-veil-layer:nth-child(1) { --jeong-veil-blur: 0.0625rem; --jeong-veil-from: 0; --jeong-veil-to: 0.3; }
+.jeong-timeline-veil-layer:nth-child(2) { --jeong-veil-blur: 0.0625rem; --jeong-veil-from: 0.3; --jeong-veil-to: 0.52; }
+.jeong-timeline-veil-layer:nth-child(3) { --jeong-veil-blur: 0.125rem; --jeong-veil-from: 0.52; --jeong-veil-to: 0.7; }
+.jeong-timeline-veil-layer:nth-child(4) { --jeong-veil-blur: 0.1875rem; --jeong-veil-from: 0.7; --jeong-veil-to: 0.84; }
+.jeong-timeline-veil-layer:nth-child(5) { --jeong-veil-blur: 0.25rem; --jeong-veil-from: 0.84; --jeong-veil-to: 0.94; }
+.jeong-timeline-veil-layer:nth-child(6) { --jeong-veil-blur: 0.375rem; --jeong-veil-from: 0.94; --jeong-veil-to: 1; }
+
+/* The numeral and its name stay at the top together while a busy stretch scrolls up and down, over the band */
+.jeong-timeline-month-head {
+	z-index: 4;
+	position: sticky;
+	top: calc(var(--jeong-timeline-top, 0rem) + var(--jeong-space-3xs));
+}
+
+.jeong-timeline-month b {
 	display: block;
 	font-family: var(--jeong-numerals);
 	font-weight: 200;
 	/* as big as the month's column allows, so neighbouring months never run together */
-	font-size: clamp(28px, min(12vh, calc(var(--jeong-month-width, 300px) * 0.5)), 140px);
+	font-size: clamp(var(--jeong-step-3), min(12vh, calc(var(--jeong-month-width, 18.75rem) * 0.5)), 8.75rem);
 	line-height: 0.85;
 	color: var(--jeong-ink);
 	font-variant-numeric: tabular-nums;
@@ -1497,8 +1634,8 @@ body {
 
 .jeong-timeline-now span {
 	position: absolute;
-	bottom: 10px;
-	left: 6px;
+	bottom: var(--jeong-space-xs);
+	left: var(--jeong-space-2xs);
 	white-space: nowrap;
 	font-family: var(--jeong-mono);
 	font-size: 0.75em;
@@ -1509,15 +1646,18 @@ body {
 /* Entry cards standing on the line */
 .jeong-timeline-entry {
 	position: absolute;
+	/* drawn at its own size, then scaled with the zoom from its top left corner (where the timeline places it) */
+	scale: var(--jeong-card-scale, 1);
+	transform-origin: 0 0;
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
-	padding: 8px;
-	border-radius: 6px;
+	gap: var(--jeong-space-2xs);
+	padding: var(--jeong-space-2xs);
+	border-radius: 0.375rem;
 	border: 1px solid var(--background-modifier-border);
 	background: var(--jeong-card);
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+	box-shadow: 0 0.0625rem 0.125rem rgba(0, 0, 0, 0.12);
 	overflow: hidden;
 	cursor: pointer;
 	transition: transform var(--jeong-quick) var(--jeong-ease), box-shadow var(--jeong-quick) var(--jeong-ease), border-color var(--jeong-quick) var(--jeong-ease);
@@ -1527,8 +1667,8 @@ body {
 .jeong-timeline-entry:hover,
 .jeong-timeline-entry:focus-visible,
 .jeong-timeline-entry.is-selected {
-	transform: translateY(-2px);
-	box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+	transform: translateY(-0.125rem);
+	box-shadow: 0 0.5rem 1.125rem rgba(0, 0, 0, 0.22);
 	border-color: var(--jeong-persimmon);
 	z-index: 2;
 }
@@ -1544,7 +1684,7 @@ body {
 	width: 100%;
 	min-height: 0;
 	overflow: hidden;
-	border-radius: 4px;
+	border-radius: 0.25rem;
 }
 
 /* Photos stacked; the one shown fades in over the last, slowly */
@@ -1582,12 +1722,12 @@ body {
 /* The brush on a card without photos: quiet in the corner, clearer on hover, and moving while it paints */
 .jeong .jeong-timeline-entry button.jeong-timeline-brush {
 	position: absolute;
-	top: 6px;
-	right: 6px;
+	top: var(--jeong-space-2xs);
+	right: var(--jeong-space-2xs);
 	display: grid;
 	place-items: center;
-	width: 26px;
-	height: 26px;
+	width: var(--jeong-space-m);
+	height: var(--jeong-space-m);
 	padding: 0;
 	border: none;
 	border-radius: 50%;
@@ -1600,8 +1740,8 @@ body {
 }
 
 .jeong-timeline-brush svg {
-	width: 15px;
-	height: 15px;
+	width: var(--jeong-space-s);
+	height: var(--jeong-space-s);
 }
 
 .jeong-timeline-entry:hover .jeong-timeline-brush,
@@ -1620,14 +1760,70 @@ body {
 	cursor: default;
 }
 
-/* While it paints: the brush sweeps back and forth, and a wash of ink breathes across the card */
-.jeong-timeline-entry.is-painting::after {
+/*
+ * While it paints, the card shows it from across the timeline: its edge turns persimmon, a thin wash of
+ * bristle streaks sweeps over it stroke after stroke, and a fine line is drawn along its foot as each
+ * stroke goes, then lifts. With reduced motion, the edge and the line just stay.
+ */
+.jeong-timeline-entry.is-painting {
+	border-color: var(--jeong-persimmon);
+}
+
+.jeong-brush-rider {
+	position: absolute;
+	top: -10%;
+	bottom: -10%;
+	left: 0;
+	width: 60%;
+	transform: translateX(-110%) skewX(-14deg);
+	opacity: 0;
+	pointer-events: none;
+	z-index: 1;
+}
+
+/* bristles: fine streaks of wash, a little uneven, fading out at both ends of the stroke */
+.jeong-brush-rider::before {
 	content: '';
 	position: absolute;
 	inset: 0;
-	background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--jeong-ink) 7%, transparent) 50%, transparent 80%);
-	background-size: 250% 100%;
+	background: repeating-linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--jeong-persimmon) 16%, transparent) 0 0.125rem,
+		color-mix(in srgb, var(--jeong-persimmon) 7%, transparent) 0.125rem 0.1875rem,
+		transparent 0.1875rem 0.3125rem
+	);
+	mask-image: linear-gradient(90deg, transparent, #000 35%, #000 65%, transparent);
+}
+
+/* The brush at the stroke's leading edge, tipped as if mid-stroke, straightened against the wash's slant */
+.jeong-brush-rider-icon {
+	position: absolute;
+	top: 50%;
+	left: 66%;
+	display: grid;
+	color: var(--jeong-persimmon);
+	opacity: 0.7;
+	transform: translate(-50%, -50%) skewX(14deg) rotate(-20deg);
+}
+
+.jeong-brush-rider-icon svg {
+	width: var(--jeong-space-m);
+	height: var(--jeong-space-m);
+}
+
+.jeong-timeline-entry.is-painting::before {
+	content: '';
+	position: absolute;
+	left: var(--jeong-space-2xs);
+	right: var(--jeong-space-2xs);
+	bottom: 0.1875rem;
+	height: 0.125rem;
+	border-radius: 0.125rem;
+	background: var(--jeong-persimmon);
+	transform-origin: left center;
+	opacity: 0.6;
 	pointer-events: none;
+	z-index: 1;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1636,32 +1832,57 @@ body {
 		animation: jeong-brush-sweep var(--jeong-drift) var(--jeong-ease-in-out) infinite alternate;
 	}
 
-	.jeong-timeline-entry.is-painting::after {
-		animation: jeong-ink-wash calc(var(--jeong-drift) * 1.5) var(--jeong-ease-in-out) infinite alternate;
+	.jeong-brush-rider {
+		animation: jeong-brush-pass calc(var(--jeong-drift) * 1.5) var(--jeong-ease-in-out) infinite;
+	}
+
+	.jeong-timeline-entry.is-painting::before {
+		animation: jeong-brush-line calc(var(--jeong-drift) * 1.5) var(--jeong-ease-in-out) infinite;
 	}
 }
 
 @keyframes jeong-brush-sweep {
 	from {
-		transform: rotate(-14deg) translateX(-2px);
+		transform: rotate(-14deg) translateX(-0.125rem);
 	}
 	to {
-		transform: rotate(10deg) translateX(2px);
+		transform: rotate(10deg) translateX(0.125rem);
 	}
 }
 
-@keyframes jeong-ink-wash {
-	from {
-		background-position: 100% 0;
+@keyframes jeong-brush-pass {
+	0% {
+		transform: translateX(-110%) skewX(-14deg);
+		opacity: 0;
 	}
-	to {
-		background-position: 0 0;
+	15%,
+	75% {
+		opacity: 1;
+	}
+	100% {
+		transform: translateX(190%) skewX(-14deg);
+		opacity: 0;
+	}
+}
+
+@keyframes jeong-brush-line {
+	0% {
+		transform: scaleX(0);
+		opacity: 0.9;
+	}
+	75% {
+		transform: scaleX(1);
+		opacity: 0.9;
+	}
+	100% {
+		transform: scaleX(1);
+		opacity: 0;
 	}
 }
 
 /* The date line leaves room for the brush */
 .jeong-timeline-entry:has(.jeong-timeline-brush) .jeong-timeline-entry-meta {
-	padding-right: 24px;
+	padding-right: var(--jeong-space-m);
 }
 
 /* Illustrate, in the recording window's left column once an entry without photos is saved */
@@ -1669,8 +1890,8 @@ body {
 	position: relative;
 	display: grid;
 	justify-items: start;
-	gap: 10px;
-	margin-top: 14px;
+	gap: var(--jeong-space-xs);
+	margin-top: var(--jeong-space-s);
 }
 
 .jeong-entry-painting-frame {
@@ -1678,13 +1899,13 @@ body {
 	width: 100%;
 	aspect-ratio: 5 / 3;
 	max-height: 0;
-	border-radius: 6px;
+	border-radius: 0.375rem;
 	overflow: hidden;
 	transition: max-height var(--jeong-gentle) var(--jeong-ease);
 }
 
 .jeong-entry-painting-frame.is-open {
-	max-height: 360px;
+	max-height: 22.5rem;
 }
 
 .jeong-entry-painting-frame img,
@@ -1699,10 +1920,10 @@ body {
 .jeong .jeong-entry-painting button.jeong-entry-illustrate {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
-	padding: 5px 12px 5px 10px;
+	gap: var(--jeong-space-2xs);
+	padding: var(--jeong-space-3xs) var(--jeong-space-xs) var(--jeong-space-3xs) var(--jeong-space-xs);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 999px;
+	border-radius: 999rem;
 	background: transparent;
 	box-shadow: none;
 	color: var(--jeong-ink);
@@ -1719,8 +1940,8 @@ body {
 }
 
 .jeong-entry-illustrate-icon svg {
-	width: 14px;
-	height: 14px;
+	width: var(--jeong-space-s);
+	height: var(--jeong-space-s);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1746,13 +1967,13 @@ body {
 
 .jeong-settings-wide {
 	width: 100%;
-	min-width: 260px;
+	min-width: 16.25rem;
 }
 
 .jeong-timeline-entry-text {
 	display: grid;
 	align-content: start;
-	gap: 2px;
+	gap: 0.125rem;
 	min-width: 0;
 }
 
@@ -1795,19 +2016,19 @@ body {
 
 .jeong-timeline-dot {
 	position: absolute;
-	width: 7px;
-	height: 7px;
-	margin: -3.5px 0 0 -3.5px;
+	width: var(--jeong-space-2xs);
+	height: var(--jeong-space-2xs);
+	margin: calc(-1 * var(--jeong-space-3xs)) 0 0 calc(-1 * var(--jeong-space-3xs));
 	border-radius: 50%;
 	background: var(--jeong-ink);
 }
 
 .jeong-timeline-more {
 	position: absolute;
-	transform: translate(-50%, 10px);
-	padding: 2px 8px;
+	transform: translate(-50%, var(--jeong-space-xs));
+	padding: 0.125rem var(--jeong-space-2xs);
 	min-height: 0;
-	border-radius: 999px;
+	border-radius: 999rem;
 	border: 1px solid var(--jeong-ink);
 	background: var(--background-primary);
 	box-shadow: none;
@@ -1815,20 +2036,20 @@ body {
 	font-size: 0.72em;
 	color: var(--jeong-ink);
 	cursor: pointer;
-	z-index: 3;
+	z-index: 2;
 }
 
 .jeong-timeline-list-item {
 	display: grid;
 	justify-items: start;
-	gap: 2px;
+	gap: 0.125rem;
 	height: auto;
-	padding: 8px 10px;
+	padding: var(--jeong-space-2xs) var(--jeong-space-xs);
 	text-align: left;
 	background: none;
 	box-shadow: none;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
+	border-radius: 0.375rem;
 	cursor: pointer;
 }
 
@@ -1839,31 +2060,31 @@ body {
 .jeong-timeline-empty {
 	position: absolute;
 	top: 66%;
-	left: 40px;
+	left: var(--jeong-space-xl);
 	font-size: 1.1em;
 	color: var(--jeong-text-muted);
 }
 
 .jeong-timeline-card {
 	position: absolute;
-	right: 20px;
-	bottom: 20px;
-	width: min(360px, calc(100% - 40px));
+	right: var(--jeong-space-m);
+	bottom: var(--jeong-space-m);
+	width: min(22.5rem, calc(100% - var(--jeong-space-xl)));
 	max-height: 55%;
 	overflow-y: auto;
 	box-sizing: border-box;
-	padding: 16px 18px;
+	padding: var(--jeong-space-s) var(--jeong-space-s);
 	display: grid;
 	/* a photo can't push the card wider than it is */
 	grid-template-columns: minmax(0, 1fr);
-	gap: 8px;
-	border-radius: 6px;
+	gap: var(--jeong-space-2xs);
+	border-radius: 0.375rem;
 	border: 0;
 	/* jjok (쪽) indigo, flat, so the preview stands apart from the walnut page in both themes */
 	background: #34405C;
 	color: #F1E8D6;
 	z-index: 6;
-	box-shadow: 0 14px 34px rgba(10, 12, 20, 0.35);
+	box-shadow: 0 0.875rem 2.125rem rgba(10, 12, 20, 0.35);
 }
 
 .jeong-timeline-card h2 {
@@ -1905,9 +2126,9 @@ body {
 .jeong-photos {
 	width: 100%;
 	display: grid;
-	gap: 10px;
-	padding: 10px;
-	border-radius: 8px;
+	gap: var(--jeong-space-xs);
+	padding: var(--jeong-space-xs);
+	border-radius: 0.5rem;
 	border: 1.5px dashed var(--jeong-hairline);
 	background: var(--jeong-wash);
 	box-sizing: border-box;
@@ -1923,11 +2144,11 @@ body {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 8px;
-	min-height: 44px;
+	gap: var(--jeong-space-2xs);
+	min-height: var(--jeong-space-xl);
 	height: auto;
 	border: 0;
-	border-radius: 6px;
+	border-radius: 0.375rem;
 	background-color: transparent;
 	box-shadow: none;
 	color: var(--jeong-text-muted);
@@ -1944,7 +2165,7 @@ body {
 .jeong-photos-strip {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
+	gap: var(--jeong-space-2xs);
 }
 
 .jeong-photos-strip:empty {
@@ -1953,18 +2174,18 @@ body {
 
 .jeong-photos-item {
 	position: relative;
-	width: 72px;
-	height: 72px;
-	border-radius: 6px;
+	width: var(--jeong-space-2xl);
+	height: var(--jeong-space-2xl);
+	border-radius: 0.375rem;
 	overflow: hidden;
 	cursor: grab;
 }
 
 .jeong-photos-item.is-main {
-	width: 96px;
-	height: 96px;
+	width: var(--jeong-space-3xl);
+	height: var(--jeong-space-3xl);
 	outline: 2px solid var(--jeong-persimmon);
-	outline-offset: 2px;
+	outline-offset: 0.125rem;
 }
 
 .jeong-photos-item img {
@@ -1976,9 +2197,9 @@ body {
 .jeong-photos-star,
 .jeong-photos-remove {
 	position: absolute;
-	top: 4px;
-	width: 22px;
-	height: 22px;
+	top: var(--jeong-space-3xs);
+	width: var(--jeong-space-m);
+	height: var(--jeong-space-m);
 	padding: 0;
 	border-radius: 50%;
 	display: grid;
@@ -1990,10 +2211,10 @@ body {
 	transition: opacity var(--jeong-quick) var(--jeong-ease);
 }
 
-.jeong-photos-star { left: 4px; }
-.jeong-photos-remove { right: 4px; }
+.jeong-photos-star { left: var(--jeong-space-3xs); }
+.jeong-photos-remove { right: var(--jeong-space-3xs); }
 .jeong-photos-star svg,
-.jeong-photos-remove svg { width: 12px; height: 12px; }
+.jeong-photos-remove svg { width: var(--jeong-space-xs); height: var(--jeong-space-xs); }
 
 .jeong-photos-item:hover .jeong-photos-star,
 .jeong-photos-item:hover .jeong-photos-remove,
@@ -2017,7 +2238,7 @@ body {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 8px;
+	gap: var(--jeong-space-2xs);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -2032,22 +2253,22 @@ body {
 	display: block;
 	width: 100%;
 	max-width: 100%;
-	max-height: 200px;
+	max-height: 12.5rem;
 	object-fit: cover;
-	border-radius: 4px;
+	border-radius: 0.25rem;
 }
 
 .jeong-timeline-card-strip {
 	display: flex;
-	gap: 6px;
+	gap: var(--jeong-space-2xs);
 	align-items: center;
 }
 
 .jeong-timeline-card-strip img {
-	width: 52px;
-	height: 52px;
+	width: var(--jeong-space-xl);
+	height: var(--jeong-space-xl);
 	object-fit: cover;
-	border-radius: 3px;
+	border-radius: 0.1875rem;
 }
 
 .jeong-timeline-card-more {

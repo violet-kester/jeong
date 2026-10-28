@@ -11,18 +11,20 @@ import { kleinWorkflow } from './klein-workflow';
 // The painting is saved in the entry's folder and named in its frontmatter (painting), with the
 // scene it was painted from (scene), so it's clear it's a painting and not a photo.
 
-const SCENE_RULES = `You choose one image to paint for someone's journal entry.
-- Pick the one or two things that hold the entry's most important moment, and describe them in one or two short sentences, in English.
-- Use only things in the entry. Don't invent places, people, weather, or objects, and keep each detail true to the moment (if the rain had stopped, there is no rain).
-- Leave out any setting the entry doesn't describe: no view out of a window, no room, no landscape unless the entry mentions it.
-- Don't add details to make it vivid: no extra objects, clutter, steam, smoke, light or effects the entry doesn't mention.
-- Make it poetic: you may turn the moment into one quiet visual metaphor, but only by reshaping things the entry mentions (if the entry has steam, the steam can become a river); never by adding something new.
-- People are welcome when the moment is about them, as simple figures: say "someone" or "a figure", never a gender unless the entry gives one.
-- Describe only what can be seen: no feelings, no colors, no words, no letters, no signs. (It is painted in one ink.)
-- Write only the description.`;
+const SCENE_RULES = `You choose one image to paint for someone's journal entry. Think like a poet or a photographer, not an illustrator.
+- Find the one detail that holds the entry's most important moment, and an unexpected way to see it, rather than the whole scene told literally.
+- Zoom in. A close-up, a fragment, an unusual viewpoint (from just above the ground, from directly above, through a doorway or a window), a shadow or a trace, or one object that stands for the moment. A walk in the park might be shoes on the path seen from low down; morning coffee might be the rim of the cup filling the frame.
+- Use only things in the entry, or what the moment plainly holds (the hands holding the cup, the feet doing the walking). Don't invent places, people, weather, or objects, and keep each detail true to the moment (if the rain had stopped, there is no rain).
+- Leave out any setting the entry doesn't describe. Name the textures of what is there (the grain of the table, the weave of a sweater, the fall of rain) so the picture can be filled with them.
+- Let the picture carry the entry's own feeling, whatever it is; don't bring a mood of your own.
+- Make it poetic: you may turn the moment into one visual metaphor, but only by reshaping things the entry mentions (if the entry has steam, the steam can become a river); never by adding something new.
+- When a person is part of it, show as little of them as the moment needs: hands, feet, a back, a shadow, or a simple figure. Say "someone" or "a figure". Never give a gender, a skin color, an age, a hairstyle, or anything else that says who they are unless the entry does.
+- Describe only what can be seen: no feelings, no colors. Never mention anything with writing on it by what it says (a card, not an invitation; a screen, not a message), and no letters or signs. (It is painted in one ink.)
+- Write only the description, in one or two short sentences, in English.`;
 
 const CHECK_RULES = `You compare a description of a picture (DESCRIPTION) with the journal entry it came from (ENTRY).
 List every thing in the DESCRIPTION that the ENTRY never mentions: objects, light, steam, smoke, weather, places, clutter. Use the exact words from the DESCRIPTION.
+Don't list the person themselves or what the moment plainly holds: their hands, feet, shoes, clothes, back, or shadow, or the viewpoint.
 If everything is in the entry, return an empty list.`;
 
 const CHECK_SCHEMA = {
@@ -31,27 +33,34 @@ const CHECK_SCHEMA = {
 	required: ['invented'],
 };
 
-/** Words for the person in the picture; the writer is always there, so these are never invented. */
-const PERSON = /^(a |the )?(figure|someone|person|people|man|woman|they|them|their)\b/i;
+/** Words for the person in the picture and what the moment plainly holds; the writer is always there, so these are never invented. */
+const PERSON = /\b(figure|someone|person|people|they|them|their|hands?|fingers?|feet|foot|shoes?|steps?|footsteps|back|shoulders?|arms?|legs?|shadows?|silhouette|clothes|sleeves?)\b/i;
 
 /**
  * Each painting takes one of these at random, so it's never a centered, literal picture and no two look alike:
  * pressing Illustrate is a small surprise every time.
  */
 const COMPOSITIONS = [
-	'Seen from directly above, the subject pushed into a lower corner and cut off by the edge of the paper.',
-	'An extreme close-up fragment of the subject, enormous, cropped hard by two edges, almost abstract.',
-	'The subject very small, low in one third of the sheet, beneath a towering field of turbulent wash.',
-	'Almost entirely abstract: open wash and empty paper filling the sheet, only a hint of the subject at one edge.',
-	"The subject's shape echoed two or three times, drifting off-center like ripples or moons.",
-	'A violent diagonal: the subject and its shadow slicing across the sheet from corner to corner, off balance.',
+	'A close-up so near that one small detail fills the sheet, cropped hard by the edges.',
+	'Seen from very low, almost at ground level, looking along the ground or up.',
+	'Seen from directly above, flattened into shapes and shadows.',
+	'A fragment: only part of the subject, the rest carved into its texture.',
+	'The subject small, off to one side, in a wide field of carved texture from its surroundings.',
+	'Framed through something in the moment: a doorway, a window, a gap, a reflection.',
+	'The moment told by a trace it leaves (footprints, a ring left by a cup, crumbs) rather than by the thing itself.',
+	'A strong diagonal across the sheet, full of movement.',
 ];
 
 /** Asked of every painting, whatever the style. */
 const ARTWORK =
-	'A small, striking work of art: expressive, poetic, never literal, never centered, never realistic. ' +
-	'Any people are simple, abstract figures with smooth, faceless heads, genderless unless the subject says otherwise. ' +
-	'Paint only what the subject mentions: no added scenery, windows, rooms, landscapes or objects; anything not described stays bare paper or abstract wash.';
+	'Any people are shown simply, or only in part (hands, feet, a back, a shadow), with smooth, faceless heads, and nothing that says their gender, skin color, or age unless the subject does. ' +
+	'A small, striking work of art: expressive, poetic, never literal, never centered, never realistic, never an illustration. ' +
+	'Full of energy, in the mood of the moment, whatever it is. ' +
+	"Fill the space with carved texture drawn from the subject's own world (its surfaces, weather, light, movement), not generic swirls. " +
+	'Paint only what the subject mentions: no added scenery, windows, rooms, landscapes or objects.';
+
+/** How long ComfyUI keeps its models after the last painting. */
+const FREE_AFTER_MS = 5 * 60 * 1000;
 
 export type PaintProgress = 'scene' | 'painting' | 'not-ready' | 'done' | 'failed';
 
@@ -76,6 +85,7 @@ export class Painter {
 	/** Entries whose painting just finished and hasn't been shown yet, so the timeline can brush it on. */
 	private fresh = new Set<string>();
 	private listeners = new Set<() => void>();
+	private freeTimer = 0;
 
 	constructor(
 		private app: App,
@@ -122,18 +132,41 @@ export class Painter {
 		}
 		this.busy.add(note.path);
 		this.changed();
+		// Where the time goes, so a slow painting can be traced to the scene, the painter, or the swap between them
+		const started = performance.now();
+		let mark = started;
+		const lap = () => {
+			const now = performance.now();
+			const ms = Math.round(now - mark);
+			mark = now;
+			return ms;
+		};
 		try {
 			onProgress('scene');
 			const scene = await this.scene(note);
+			const sceneMs = lap();
 			// An 8 GB graphics card can't hold the story model and the painting model at once
 			await this.llm.unload();
+			const unloadMs = lap();
 			onProgress('painting');
 			// Style first: the model pays the most attention to the start of the prompt
 			const composition = COMPOSITIONS[Math.floor(Math.random() * COMPOSITIONS.length)];
 			const prompt = `${this.settings().paintStyle} ${ARTWORK}\n\nComposition: ${composition}\n\nSubject: ${scene}`;
 			const png = this.local ? await this.comfy.paint(await this.workflow(prompt)) : await this.cloud.paint(prompt);
+			const paintMs = lap();
 			this.fresh.add(note.path);
 			await this.save(note, await toJpeg(png), scene);
+			const settings = this.settings();
+			this.metrics.log({
+				event: 'paint',
+				painter: settings.paintProvider,
+				model: { comfyui: settings.paintWorkflow || 'flux2-klein', openai: settings.openaiImageModel, xai: settings.xaiImageModel }[settings.paintProvider],
+				sceneMs,
+				unloadMs,
+				paintMs,
+				saveMs: lap(),
+				ms: Math.round(performance.now() - started),
+			});
 			onProgress('done');
 			return true;
 		} catch (error) {
@@ -144,7 +177,25 @@ export class Painter {
 		} finally {
 			this.busy.delete(note.path);
 			this.changed();
+			this.freeWhenIdle();
 		}
+	}
+
+	/**
+	 * Lets ComfyUI free its models once nothing has been painted for a while, like Ollama does, so they don't
+	 * hold the computer's memory for hours. The next painting loads them again (10 to 20 seconds).
+	 */
+	private freeWhenIdle(): void {
+		window.clearTimeout(this.freeTimer);
+		if (!this.local) return;
+		this.freeTimer = window.setTimeout(() => {
+			if (!this.busy.size) void this.comfy.free();
+		}, FREE_AFTER_MS);
+	}
+
+	/** Stops waiting to free ComfyUI's models, when Jeong closes. */
+	dispose(): void {
+		window.clearTimeout(this.freeTimer);
 	}
 
 	private changed(): void {

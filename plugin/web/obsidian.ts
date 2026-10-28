@@ -75,6 +75,9 @@ Element.prototype.toggleClass = function (this: Element, cls: string, value: boo
 Element.prototype.hasClass = function (this: Element, cls: string) {
 	return this.classList.contains(cls);
 };
+HTMLElement.prototype.setCssProps = function (this: HTMLElement, props: Record<string, string>) {
+	for (const [name, value] of Object.entries(props)) this.style.setProperty(name, value);
+};
 Element.prototype.setText = function (this: Element, text: string) {
 	this.textContent = text;
 };
@@ -104,8 +107,20 @@ Object.assign(window, {
 
 // ---- Small functions ----
 
+const customIcons = new Map<string, string>();
+
+/** Jeong's own icons (src/ui/icons.ts), drawn on a 100×100 grid like Obsidian's. */
+export function addIcon(name: string, svgContent: string): void {
+	customIcons.set(name, svgContent);
+}
+
 export function setIcon(el: HTMLElement, name: string): void {
 	el.empty();
+	const custom = customIcons.get(name);
+	if (custom) {
+		el.innerHTML = `<svg class="svg-icon ${name}" viewBox="0 0 100 100" width="24" height="24">${custom}</svg>`;
+		return;
+	}
 	const key = name.replace(/^lucide-/, '').replace(/(^|-)([a-z0-9])/g, (_, __, c: string) => c.toUpperCase()) as keyof typeof icons;
 	const icon = icons[key];
 	if (!icon) return;
@@ -275,6 +290,19 @@ export class Modal extends Component {
 export class Plugin {}
 export class PluginSettingTab {}
 export class Setting {}
+// Settings pieces the browser preview never shows
+export class SecretComponent {}
+export class AbstractInputSuggest<T> {
+	protected app: unknown;
+	constructor(app: unknown, _inputEl: HTMLInputElement) {
+		this.app = app;
+	}
+	setValue(_value: string): void {}
+	close(): void {}
+	getSuggestions(_query: string): T[] {
+		return [];
+	}
+}
 
 // The app the preview builds (see app.ts); typed loosely, since it only covers what Jeong uses
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

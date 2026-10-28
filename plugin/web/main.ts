@@ -8,10 +8,11 @@ import { FsVault } from './vault';
 import { seedDemo } from './demo';
 import { TimelineView } from '../src/ui/timeline-view';
 import { RecordModal } from '../src/ui/record-modal';
-import { DEFAULT_SETTINGS, type JeongSettings } from '../src/settings';
+import { DEFAULT_SETTINGS, type JeongSettings, type JeongTheme } from '../src/settings';
 import { Metrics } from '../src/metrics/metrics';
 import { Ollama } from '../src/compose/ollama';
 import { Painter } from '../src/paint/painter';
+import { addIcons } from '../src/ui/icons';
 import mark from '../../jeong-logo-card.svg';
 
 declare const JEONG_DEMO: boolean;
@@ -66,35 +67,39 @@ function welcome(remembered: FileSystemDirectoryHandle | null): void {
 }
 
 async function open(handle: FileSystemDirectoryHandle, name: string): Promise<void> {
+	addIcons();
 	const settings = await loadSettings(handle);
 	const vault = new FsVault(handle, name);
 	await vault.load(settings.journalFolder);
 	const app = { vault, metadataCache: vault.metadataCache, fileManager: vault.fileManager, workspace: vault.workspace };
 	(window as unknown as { app: unknown }).app = app;
 
-	document.body.toggleClass('jeong-theme-light', settings.theme === 'light');
-	document.body.toggleClass('jeong-theme-dark', settings.theme === 'dark');
 
 	const metrics = new Metrics(app, () => settings.journalFolder, 'web');
 	const ollama = new Ollama(
 		() => settings.ollamaUrl,
 		() => settings.storyModel,
 	);
-	const painter = new Painter(app, ollama, metrics, () => settings);
+	// In the browser there's no Obsidian keychain, so only the local, keyless models are offered
+	const painter = new Painter(app, ollama, metrics, () => settings, () => '');
 	const plugin = {
 		app,
 		settings,
 		painter,
 		openRecorder: () =>
-			new RecordModal(app, metrics, { liveMode: settings.liveMode, journalFolder: settings.journalFolder, ollama, painter, paintInk: settings.paintInk }).open(),
+			new RecordModal(app, metrics, { liveMode: settings.liveMode, journalFolder: settings.journalFolder, llm: ollama, painter, paintInk: settings.paintInk }).open(),
+		showTheme: (theme: JeongTheme | null) => {
+			showTheme(theme ?? settings.theme);
+			view.showThemeButton();
+		},
 	};
+	showTheme(savedTheme() ?? settings.theme);
 
 	const view = new TimelineView(new WorkspaceLeaf(), plugin as never);
 	view.containerEl.setAttribute('data-type', view.getViewType());
 	document.body.prepend(view.containerEl);
 	await view.onOpen();
 	shareTitleLine(view);
-	addThemeToggle(view, settings);
 	window.addEventListener('resize', () => view.onResize());
 	if (params.has('record')) plugin.openRecorder();
 }
@@ -117,38 +122,26 @@ function shareTitleLine(view: TimelineView): void {
 }
 
 /**
- * Light and dark, one tap away at the end of the bar. The choice is remembered in this browser only; it
- * starts from the plugin's own theme setting.
+ * Light and dark, from the timeline's button. In the browser the choice is remembered, in this browser only;
+ * until then it's the plugin's own theme setting.
  */
-function addThemeToggle(view: TimelineView, settings: JeongSettings): void {
-	const bar = view.containerEl.querySelector('.jeong-timeline-bar');
-	if (!bar) return;
-	const isDark = () => document.body.hasClass('jeong-theme-dark') || (!document.body.hasClass('jeong-theme-light') && document.body.hasClass('theme-dark'));
-	const apply = (theme: 'light' | 'dark' | 'obsidian') => {
-		document.body.toggleClass('jeong-theme-light', theme === 'light');
-		document.body.toggleClass('jeong-theme-dark', theme === 'dark');
-		const dark = isDark();
-		setIcon(button, dark ? 'sun' : 'moon');
-		button.setAttribute('aria-label', dark ? 'Light theme' : 'Dark theme');
-	};
-	const pill = bar.createDiv({ cls: 'jeong-timeline-pill jeong-web-theme' });
-	const button = pill.createEl('button');
-	button.addEventListener('click', () => {
-		const theme = isDark() ? 'light' : 'dark';
-		apply(theme);
-		try {
-			localStorage.setItem(THEME_KEY, theme);
-		} catch {
-			// private window: it just isn't remembered
-		}
-	});
-	let saved: string | null = null;
+function showTheme(theme: JeongTheme): void {
+	document.body.toggleClass('jeong-theme-light', theme === 'light');
+	document.body.toggleClass('jeong-theme-dark', theme === 'dark');
 	try {
-		saved = localStorage.getItem(THEME_KEY);
+		if (theme === 'light' || theme === 'dark') localStorage.setItem(THEME_KEY, theme);
 	} catch {
-		saved = null;
+		// private window: it just isn't remembered
 	}
-	apply(saved === 'light' || saved === 'dark' ? saved : settings.theme);
+}
+
+function savedTheme(): JeongTheme | null {
+	try {
+		const saved = localStorage.getItem(THEME_KEY);
+		return saved === 'light' || saved === 'dark' ? saved : null;
+	} catch {
+		return null;
+	}
 }
 
 const THEME_KEY = 'jeong-web-theme';

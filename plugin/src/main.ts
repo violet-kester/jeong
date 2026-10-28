@@ -4,11 +4,12 @@ import { StoryWriter } from './compose/language-model';
 import { writeStory } from './compose/write-story';
 import { paintMessage, storyMessage } from './ui/story-messages';
 import { TIMELINE_VIEW, TimelineView } from './ui/timeline-view';
-import { DEFAULT_SETTINGS, JeongSettings, JeongSettingTab } from './settings';
+import { DEFAULT_SETTINGS, JeongSettings, JeongSettingTab, OLD_PAINT_STYLES, PAINT_STYLE, type JeongTheme } from './settings';
 import { RecordModal } from './ui/record-modal';
 import { PerformanceModal } from './ui/performance-modal';
 import { Metrics } from './metrics/metrics';
 import { Painter } from './paint/painter';
+import { addIcons } from './ui/icons';
 import { t } from './i18n';
 
 /**
@@ -24,6 +25,7 @@ export default class JeongPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+		addIcons();
 		this.applyTheme();
 		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, this.manifest.version);
 		const secret = (id: string) => (id ? (this.app.secretStorage.getSecret(id) ?? '') : '');
@@ -127,13 +129,27 @@ export default class JeongPlugin extends Plugin {
 
 	onunload() {
 		this.loose?.dispose();
+		this.painter?.dispose();
 		document.body.removeClass('jeong-theme-light', 'jeong-theme-dark');
+	}
+
+	/** Light or dark for now, from the timeline's button; the theme in settings comes back when Obsidian starts again. */
+	private themeForNow: JeongTheme | null = null;
+
+	/** Shows Jeong in `theme` for now, or, given null, in the theme from settings again. */
+	showTheme(theme: JeongTheme | null) {
+		this.themeForNow = theme;
+		this.applyTheme();
 	}
 
 	/** Puts Jeong's light or dark colors on every Jeong view and window, or lets them follow Obsidian. */
 	applyTheme() {
-		document.body.toggleClass('jeong-theme-light', this.settings.theme === 'light');
-		document.body.toggleClass('jeong-theme-dark', this.settings.theme === 'dark');
+		const theme = this.themeForNow ?? this.settings.theme;
+		document.body.toggleClass('jeong-theme-light', theme === 'light');
+		document.body.toggleClass('jeong-theme-dark', theme === 'dark');
+		for (const leaf of this.app.workspace.getLeavesOfType(TIMELINE_VIEW)) {
+			if (leaf.view instanceof TimelineView) leaf.view.showThemeButton();
+		}
 	}
 
 	/** Redraws open timelines, e.g. after the ink color changes. */
@@ -179,6 +195,8 @@ export default class JeongPlugin extends Plugin {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<JeongSettings>);
 		// Older versions saved a model name here; anything unknown falls back to the default
 		if (this.settings.liveMode !== 'moonshine') this.settings.liveMode = 'hybrid';
+		// A painting style never edited is the built-in one, so it follows when the built-in one changes
+		if (OLD_PAINT_STYLES.includes(this.settings.paintStyle)) this.settings.paintStyle = PAINT_STYLE;
 	}
 
 	async saveSettings() {

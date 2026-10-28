@@ -9,6 +9,8 @@ export const en = {
 	'timeline.earlier': 'Earlier',
 	'timeline.later': 'Later',
 	'timeline.today': 'Today',
+	'timeline.lightTheme': 'Light theme',
+	'timeline.darkTheme': 'Dark theme',
 	'timeline.record': 'Record',
 	'timeline.zoomIn': 'Zoom in',
 	'timeline.zoomOut': 'Zoom out',

@@ -13,7 +13,7 @@ interface HistoryEntry {
 
 const POLL_MS = 1000;
 const TIMEOUT_MS = 10 * 60 * 1000; // the first painting also loads the model, which can take a few minutes
-const REQUEST_MS = 15_000; // one request that never answers (ComfyUI busy or stuck) is given up and asked again
+const REQUEST_MS = 2_000; // ComfyUI can't answer while it loads a model; a check that gets no answer is given up and asked again soon
 
 export class ComfyUI {
 	constructor(private url: () => string) {}
@@ -29,6 +29,24 @@ export class ComfyUI {
 			return response.status === 200;
 		} catch {
 			return false;
+		}
+	}
+
+	/**
+	 * Asks ComfyUI to let go of its models, from the graphics card and from memory. ComfyUI otherwise keeps
+	 * them loaded for good, holding many gigabytes long after the last painting.
+	 */
+	async free(): Promise<void> {
+		try {
+			await requestUrl({
+				url: this.address('/free'),
+				method: 'POST',
+				contentType: 'application/json',
+				body: JSON.stringify({ unload_models: true, free_memory: true }),
+				throw: false,
+			});
+		} catch {
+			// Not running, or already freed
 		}
 	}
 
