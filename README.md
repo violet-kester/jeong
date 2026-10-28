@@ -12,12 +12,31 @@ It can't be rushed. Like snow, it accumulates quietly over shared meals and umbr
 Koreans speak of *miun jeong* (미운 정) and *goun jeong* (고운 정), the *jeong* of hard times and of sweet ones, and both bring people closer.
 </div>
 
-# An open source journal you read as a timeline instead of a list
+## What is this?
 
+An open source journal you read as a timeline instead of a list. Speak with it and it crafts your story.
+
+- **Talk** about your day in a quick voice note, or chat with a voice agent. Your words appear on the page as you speak.
+- **Capture** voice, photos, and writing effortlessly. Every recording is kept, along with a word-for-word transcript.
+- **Read** your words back as a story. Jeong crafts each transcript into a journal entry in your own voice.
+    - Later, add to it or change it just by talking.
+- **See** each story illustrated. Jeong paints the moment as a woodcut, taking cues from any photos you add.
 - **Zoom** from a single day out to your whole life.
-- **Capture** writing, photos, and voice.
-- **Talk** by recording a quick voice note or chatting with a voice agent.
-- **Share privately** with encryption and only your connections.
+- **Keep** it for good. Each entry is a folder of plain files: the recording, the raw transcript, the story, and its pictures.
+    - Like Obsidian's notes, it fits on a thumb drive and will still open decades from now.
+- **Own** it inside Obsidian. Your entries are ordinary notes in the vault folder you choose.
+- **Completely private**: encrypted, and shared only with your connections.
+
+One entry, as it sits in your vault:
+
+```
+<your journal folder>/2026/10 October/2026-10-26 2206 Cold Kitchen Morning/
+├── Cold Kitchen Morning.md                the story
+├── Cold Kitchen Morning (transcript).md   word for word, with times
+├── Cold Kitchen Morning (AI draft).md     what Jeong first wrote, to compare
+├── recording.webm                         your voice
+└── 2026-10-26 2206 painting.jpg           its painting
+```
 
 ## Install the Obsidian plugin
 
