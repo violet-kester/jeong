@@ -1,8 +1,9 @@
 import { App, TFile } from 'obsidian';
-import { composeEntry, type ComposeStep } from './composer';
-import type { LanguageModel } from './language-model';
+import { composeEntry, reviseEntry, type ComposedEntry, type ComposeStep } from './composer';
+import type { ChatResult, LanguageModel } from './language-model';
 import type { Metrics } from '../metrics/metrics';
 import { applyStory, findTranscript, transcriptText } from '../journal/apply-story';
+import { storyText } from '../journal/story-text';
 
 export type StoryProgress = ComposeStep | 'not-ready' | 'done' | 'failed';
 
@@ -17,6 +18,34 @@ export async function writeStory(
 	note: TFile,
 	onProgress: (progress: StoryProgress) => void,
 ): Promise<boolean> {
+	return compose(app, llm, metrics, note, onProgress, (transcript, onStep) => composeEntry(llm, transcript, onStep));
+}
+
+/**
+ * Changes an entry's story the way the person asked, out loud, and saves it. Their words are only instructions:
+ * they change the story and are never added to it, and the transcript stays as it was.
+ */
+export async function reviseStory(
+	app: App,
+	llm: LanguageModel,
+	metrics: Metrics,
+	note: TFile,
+	instructions: string,
+	onProgress: (progress: StoryProgress) => void,
+): Promise<boolean> {
+	const current = storyText(await app.vault.read(note));
+	return compose(app, llm, metrics, note, onProgress, (transcript, onStep) => reviseEntry(llm, transcript, current, instructions, onStep));
+}
+
+/** Runs one way of writing the story from the entry's transcript, logs each step, and saves the result. */
+async function compose(
+	app: App,
+	llm: LanguageModel,
+	metrics: Metrics,
+	note: TFile,
+	onProgress: (progress: StoryProgress) => void,
+	write: (transcript: string, onStep: (step: ComposeStep, result?: ChatResult) => void) => Promise<ComposedEntry>,
+): Promise<boolean> {
 	if (!(await llm.isReady())) {
 		onProgress('not-ready');
 		return false;
@@ -27,7 +56,7 @@ export async function writeStory(
 
 	try {
 		let model = '';
-		const composed = await composeEntry(llm, transcript, (step, result) => {
+		const composed = await write(transcript, (step, result) => {
 			if (!result) {
 				onProgress(step);
 				return;

@@ -25,7 +25,12 @@ export class OpenAI implements LanguageModel {
 			headers: { Authorization: `Bearer ${this.apiKey()}` },
 			body: JSON.stringify({
 				model: this.model(),
-				messages,
+				messages: messages.map(({ role, content, images }) => ({
+					role,
+					content: images?.length
+						? [{ type: 'text', text: content }, ...images.map((data) => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${data}` } }))]
+						: content,
+				})),
 				...(options.schema
 					? { response_format: { type: 'json_schema', json_schema: { name: 'reply', strict: true, schema: closedSchema(options.schema) } } }
 					: {}),

@@ -5,11 +5,22 @@ import { freeName } from '../journal/entry-writer';
 import { CloudImages } from './cloud-images';
 import { ComfyUI, type Workflow } from './comfyui';
 import { kleinWorkflow } from './klein-workflow';
+import { storyText } from '../journal/story-text';
 
 // Paints a picture for an entry that has no photos, on this computer unless a cloud painter is chosen in settings:
 // The language model describes one scene from the entry, and ComfyUI paints it in the style from settings.
 // The painting is saved in the entry's folder and named in its frontmatter (painting), with the
 // scene it was painted from (scene), so it's clear it's a painting and not a photo.
+
+const PHOTO_RULES = `You look at the photos from someone's journal entry and note what the people, animals and things in them look like, so a painter can draw them loosely from memory.
+- Each person: hair (length, color, curl), glasses, build, skin tone, notable clothing, and "face visible" if their face can be seen.
+- Each animal: what it is, its breed if clear, size, coat color and markings, ears.
+- Notable things: their shape and pattern.
+- One short line per person, animal or thing. Nothing about the photos' framing, background, setting or mood. No names.`;
+
+/** How many photos are looked at, and how large, for the notes. */
+const PHOTOS_SEEN = 3;
+const PHOTO_SIZE = 768;
 
 const SCENE_RULES = `You choose one image to paint for someone's journal entry. Think like a poet or a photographer, not an illustrator.
 - Find the one detail that holds the entry's most important moment, and an unexpected way to see it, rather than the whole scene told literally.
@@ -18,13 +29,14 @@ const SCENE_RULES = `You choose one image to paint for someone's journal entry. 
 - Leave out any setting the entry doesn't describe. Name the textures of what is there (the grain of the table, the weave of a sweater, the fall of rain) so the picture can be filled with them.
 - Let the picture carry the entry's own feeling, whatever it is; don't bring a mood of your own.
 - Make it poetic: you may turn the moment into one visual metaphor, but only by reshaping things the entry mentions (if the entry has steam, the steam can become a river); never by adding something new.
-- When a person is part of it, show as little of them as the moment needs: hands, feet, a back, a shadow, or a simple figure. Say "someone" or "a figure". Never give a gender, a skin color, an age, a hairstyle, or anything else that says who they are unless the entry does.
+- When a person is part of it, show as little of them as the moment needs: hands, feet, a back, a shadow, or a simple figure. Say "someone" or "a figure". Never give a gender, a skin color, an age, a hairstyle, or anything else that says who they are unless the entry or the photos do.
+- PHOTOS, when given, only tell you what the people, animals and things in the moment look like. Draw them that way, loosely (the dog's own coat and ears, someone's curly hair and glasses). Never copy a photo's framing, setting or pose: still find your own poetic way into the moment.
 - Describe only what can be seen: no feelings, no colors. Never mention anything with writing on it by what it says (a card, not an invitation; a screen, not a message), and no letters or signs. (It is painted in one ink.)
 - Write only the description, in one or two short sentences, in English.`;
 
 const CHECK_RULES = `You compare a description of a picture (DESCRIPTION) with the journal entry it came from (ENTRY).
 List every thing in the DESCRIPTION that the ENTRY never mentions: objects, light, steam, smoke, weather, places, clutter. Use the exact words from the DESCRIPTION.
-Don't list the person themselves or what the moment plainly holds: their hands, feet, shoes, clothes, back, or shadow, or the viewpoint.
+Don't list the person themselves or what the moment plainly holds: their hands, feet, shoes, clothes, back, or shadow, or the viewpoint. Anything the PHOTOS describe counts as in the entry.
 If everything is in the entry, return an empty list.`;
 
 const CHECK_SCHEMA = {
@@ -51,9 +63,14 @@ const COMPOSITIONS = [
 	'A strong diagonal across the sheet, full of movement.',
 ];
 
-/** Asked of every painting, whatever the style. */
+/** How people look: faceless and nobody in particular, unless the entry's photos show them. */
+const FACELESS =
+	'Any people are shown simply, or only in part (hands, feet, a back, a shadow), with smooth, faceless heads, and nothing that says their gender, skin color, or age unless the subject does. ';
+const FROM_PHOTOS =
+	'People and animals in the subject look loosely like the Looks notes below, drawn from memory, never copied from a photo; a person whose face the notes say is visible may have simple features, others stay faceless. ';
+
+/** Asked of every painting, whatever the style; how people look comes first, where the model pays most attention. */
 const ARTWORK =
-	'Any people are shown simply, or only in part (hands, feet, a back, a shadow), with smooth, faceless heads, and nothing that says their gender, skin color, or age unless the subject does. ' +
 	'A small, striking work of art: expressive, poetic, never literal, never centered, never realistic, never an illustration. ' +
 	'Full of energy, in the mood of the moment, whatever it is. ' +
 	"Fill the space with carved texture drawn from the subject's own world (its surfaces, weather, light, movement), not generic swirls. " +
@@ -143,7 +160,7 @@ export class Painter {
 		};
 		try {
 			onProgress('scene');
-			const scene = await this.scene(note);
+			const { scene, photos } = await this.scene(note);
 			const sceneMs = lap();
 			// An 8 GB graphics card can't hold the story model and the painting model at once
 			await this.llm.unload();
@@ -151,7 +168,10 @@ export class Painter {
 			onProgress('painting');
 			// Style first: the model pays the most attention to the start of the prompt
 			const composition = COMPOSITIONS[Math.floor(Math.random() * COMPOSITIONS.length)];
-			const prompt = `${this.settings().paintStyle} ${ARTWORK}\n\nComposition: ${composition}\n\nSubject: ${scene}`;
+			// People drawn from the photos' notes when there are any, otherwise faceless and nobody in particular
+			const people = photos ? FROM_PHOTOS : FACELESS;
+			const looks = photos ? `\n\nLooks (only for whoever and whatever is in the subject): ${photos}` : '';
+			const prompt = `${this.settings().paintStyle} ${people}${ARTWORK}\n\nComposition: ${composition}\n\nSubject: ${scene}${looks}`;
 			const png = this.local ? await this.comfy.paint(await this.workflow(prompt)) : await this.cloud.paint(prompt);
 			const paintMs = lap();
 			this.fresh.add(note.path);
@@ -202,14 +222,19 @@ export class Painter {
 		this.listeners.forEach((listener) => listener());
 	}
 
-	/** What to paint, from the entry. Without a language model, the title and summary are the scene. */
-	private async scene(note: TFile): Promise<string> {
+	/**
+	 * What to paint, from the entry, and what its photos show of how people, animals and things look ('' without
+	 * photos). Without a language model, the title and summary are the scene.
+	 */
+	private async scene(note: TFile): Promise<{ scene: string; photos: string }> {
 		const fm = this.app.metadataCache.getFileCache(note)?.frontmatter ?? {};
 		const title = typeof fm.title === 'string' ? fm.title : note.basename;
 		const summary = typeof fm.summary === 'string' ? fm.summary : '';
 		const story = storyText(await this.app.vault.cachedRead(note)).slice(0, 6000);
-		if (!(await this.llm.isReady())) return [title, summary].filter(Boolean).join('. ');
-		const entry = story || summary;
+		if (!(await this.llm.isReady())) return { scene: [title, summary].filter(Boolean).join('. '), photos: '' };
+		const photos = await this.photoNotes(note, fm.photos);
+		// The photos' notes count as part of the entry, so the check below keeps what they describe
+		const entry = `${story || summary}${photos ? `\n\nPHOTOS (what the people, animals and things look like):\n${photos}` : ''}`;
 		const scene = await this.llm.chat([
 			{ role: 'system', content: SCENE_RULES },
 			{ role: 'user', content: `TITLE: ${title}\n\nENTRY:\n${entry}` },
@@ -226,7 +251,31 @@ export class Painter {
 		);
 		this.logLlm('scene-check', check);
 		const flagged = parseList(check.content).filter((thing) => !PERSON.test(thing.trim()) && !mentioned(thing, entry));
-		return withoutClauses(scene.content, flagged) || title;
+		return { scene: withoutClauses(scene.content, flagged) || title, photos };
+	}
+
+	/**
+	 * Notes on what the people, animals and things in the entry's photos look like, for drawing them loosely.
+	 * Empty without photos, or when no model that sees images is available (the painting just doesn't use them).
+	 */
+	private async photoNotes(note: TFile, names: unknown): Promise<string> {
+		const files = (Array.isArray(names) ? names.map(String) : [])
+			.map((name) => this.app.vault.getAbstractFileByPath(normalizePath(`${note.parent?.path ?? ''}/${name}`)))
+			.filter((file): file is TFile => file instanceof TFile)
+			.slice(0, PHOTOS_SEEN);
+		if (!files.length) return '';
+		try {
+			const images = await Promise.all(files.map(async (file) => toSmallJpeg(await this.app.vault.readBinary(file))));
+			const notes = await this.llm.chat([
+				{ role: 'system', content: PHOTO_RULES },
+				{ role: 'user', content: 'What do the people, animals and things in these photos look like?', images },
+			]);
+			this.logLlm('photo-notes', notes);
+			return notes.content.trim();
+		} catch (error) {
+			this.metrics.log({ event: 'error', where: 'photo-notes', message: error instanceof Error ? error.message : String(error) });
+			return '';
+		}
 	}
 
 	private logLlm(task: string, result: ChatResult): void {
@@ -302,14 +351,18 @@ function parseList(json: string): string[] {
 	}
 }
 
-/** The entry's words, without frontmatter, embeds, the links line, or callouts. */
-function storyText(content: string): string {
-	return content
-		.replace(/^---[\s\S]*?---/, '')
-		.replace(/!\[\[[^\]]*\]\]/g, '')
-		.replace(/^\*\[\[.*\]\]\*$/gm, '')
-		.replace(/^>.*$/gm, '')
-		.trim();
+/** A photo at most PHOTO_SIZE on its longer side, as base64 JPEG, small enough to send to a model that sees images. */
+async function toSmallJpeg(bytes: ArrayBuffer): Promise<string> {
+	const bitmap = await createImageBitmap(new Blob([bytes]));
+	const scale = Math.min(1, PHOTO_SIZE / Math.max(bitmap.width, bitmap.height));
+	const canvas = new OffscreenCanvas(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
+	canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+	bitmap.close();
+	const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+	const binary = new Uint8Array(await blob.arrayBuffer());
+	let text = '';
+	for (let i = 0; i < binary.length; i += 0x8000) text += String.fromCharCode(...binary.subarray(i, i + 0x8000));
+	return window.btoa(text);
 }
 
 /** The painters send PNGs; a JPEG is a fraction of the size, which matters when the vault syncs to a phone. */

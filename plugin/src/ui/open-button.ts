@@ -14,11 +14,11 @@ export function openButtonRound(parent: HTMLElement, onClick: () => void): { act
 	return { action, button };
 }
 
-/** The pill Open entry button, with its label inside. */
-export function openButtonPill(parent: HTMLElement, onClick: () => void): HTMLButtonElement {
+/** The pill Open entry button, with its label inside (or another label, like Read the story). */
+export function openButtonPill(parent: HTMLElement, onClick: () => void, label = t('record.openEntry')): HTMLButtonElement {
 	const button = parent.createEl('button', { cls: 'jeong-open-button is-pill' });
 	setIcon(button.createSpan({ cls: 'jeong-open-button-icon' }), 'book-open');
-	button.createSpan({ text: t('record.openEntry') });
+	button.createSpan({ text: label });
 	button.addEventListener('click', onClick);
 	return button;
 }

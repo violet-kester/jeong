@@ -7,7 +7,7 @@ import { Platform, WorkspaceLeaf, moment, setIcon } from './obsidian';
 import { FsVault } from './vault';
 import { seedDemo } from './demo';
 import { TimelineView } from '../src/ui/timeline-view';
-import { RecordModal } from '../src/ui/record-modal';
+import { RecordModal, type RecordModalOptions } from '../src/ui/record-modal';
 import { DEFAULT_SETTINGS, type JeongSettings, type JeongTheme } from '../src/settings';
 import { Metrics } from '../src/metrics/metrics';
 import { Ollama } from '../src/compose/ollama';
@@ -86,8 +86,8 @@ async function open(handle: FileSystemDirectoryHandle, name: string): Promise<vo
 		app,
 		settings,
 		painter,
-		openRecorder: () =>
-			new RecordModal(app, metrics, { liveMode: settings.liveMode, journalFolder: settings.journalFolder, llm: ollama, painter, paintInk: settings.paintInk }).open(),
+		openRecorder: (entry?: RecordModalOptions['entry']) =>
+			new RecordModal(app, metrics, { liveMode: settings.liveMode, journalFolder: settings.journalFolder, llm: ollama, painter, paintInk: settings.paintInk, entry }).open(),
 		showTheme: (theme: JeongTheme | null) => {
 			showTheme(theme ?? settings.theme);
 			view.showThemeButton();

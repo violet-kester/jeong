@@ -1,5 +1,6 @@
 import { App, Modal, Platform, TFile, moment, setIcon } from 'obsidian';
 import { t } from '../i18n';
+import type { StringKey } from '../i18n/en';
 import { Recorder, type Recording } from '../audio/recorder';
 import { VoiceHorizon } from './voice-horizon';
 import { arrive, fade, leave } from './motion';
@@ -9,7 +10,7 @@ import { addRecording, writeEntry } from '../journal/entry-writer';
 import { saveLoosePage } from '../journal/loose-pages';
 import { PhotoTray } from './photo-tray';
 import { openButtonRound } from './open-button';
-import { writeStory } from '../compose/write-story';
+import { reviseStory, writeStory } from '../compose/write-story';
 import type { LanguageModel } from '../compose/language-model';
 import { paintMessage, storyMessage } from './story-messages';
 import { LiveTranscriber } from '../transcribe/live-transcriber';
@@ -34,6 +35,11 @@ export interface RecordModalOptions {
 	/** Paints a picture for an entry without photos (on a computer), shown in `paintInk`. */
 	painter?: Painter;
 	paintInk?: InkName;
+	/**
+	 * An entry to add to or change, from its story. Add: what you say joins the transcript and the story is
+	 * written again from all of it. Change: what you say is only instructions, applied to the story.
+	 */
+	entry?: { note: TFile; mode: 'add' | 'change' };
 }
 
 // The recording window, laid out like a letter: the date and photos down the left, and on the right
@@ -97,7 +103,10 @@ export class RecordModal extends Modal {
 		const background = this.containerEl.querySelector<HTMLElement>('.modal-bg');
 		if (background) void fade(background, 'in');
 		const { contentEl } = this;
-		const now = moment();
+		const entry = this.options.entry;
+		const fm = entry ? (this.app.metadataCache.getFileCache(entry.note)?.frontmatter ?? {}) : {};
+		// An entry being added to or changed keeps its own date
+		const now = entry && typeof fm.date === 'string' ? moment(`${fm.date} ${typeof fm.time === 'string' && fm.time ? fm.time : '12:00'}`) : moment();
 		// With no live words to show (on a phone), the window is just the button
 		if (this.onPhone) {
 			this.buildVoiceOnly(now);
@@ -109,8 +118,12 @@ export class RecordModal extends Modal {
 		side.createDiv({ cls: 'jeong-entry-day', text: now.format('D') });
 		side.createDiv({ cls: 'jeong-entry-month', text: now.format('MMMM') });
 		side.createDiv({ cls: 'jeong-entry-when', text: now.format('dddd · LT') });
-		this.photos = new PhotoTray(side);
-		side.createDiv({ cls: 'jeong-entry-label', text: t('record.photos') });
+		// Photos can be added along with more words; changing the story is words only
+		if (entry?.mode === 'change') this.photos = new PhotoTray(createDiv());
+		else {
+			this.photos = new PhotoTray(side);
+			side.createDiv({ cls: 'jeong-entry-label', text: t('record.photos') });
+		}
 
 		// Right: the page
 		const main = contentEl.createDiv({ cls: 'jeong-entry-main' });
@@ -118,8 +131,8 @@ export class RecordModal extends Modal {
 			main.createDiv({ cls: 'jeong-test-intro', text: t('test.intro') });
 			main.createDiv({ cls: 'jeong-test-script', text: TEST_SCRIPT });
 		}
-		this.heading = main.createDiv({ cls: 'jeong-entry-heading', text: t(this.options.test ? 'test.title' : 'record.prompt') });
-		const hint = t(this.onPhone ? 'record.transcriptHintPhone' : 'record.transcriptHint');
+		this.heading = main.createDiv({ cls: 'jeong-entry-heading', text: t(this.options.test ? 'test.title' : this.prompt) });
+		const hint = t(entry?.mode === 'change' ? 'record.changeHint' : this.onPhone ? 'record.transcriptHintPhone' : 'record.transcriptHint');
 		this.transcript = main.createDiv({ cls: 'jeong-transcript is-empty', attr: { 'data-placeholder': hint } });
 		this.take = this.transcript.createSpan({ cls: 'jeong-take' });
 		this.partial = this.take.createSpan({ cls: 'jeong-transcript-partial' });
@@ -154,6 +167,15 @@ export class RecordModal extends Modal {
 		this.finalRow = this.addDetail(t('check.finalModel'), t('check.loading'));
 		void this.showSystemCheck();
 		this.startTranscribers();
+
+		// Adding to or changing an entry: its story is open beside the page from the start, and Open entry is there
+		if (entry) {
+			this.savedNote = entry.note;
+			this.setButton(false);
+			arrive(this.openAction);
+			this.showStoryPane();
+			void this.fillStory(entry.note, true);
+		}
 	}
 
 	/**
@@ -201,21 +223,29 @@ export class RecordModal extends Modal {
 	}
 
 	/** The big button: a microphone to start, a square to stop. */
+	/** What the page asks: what to remember, or, for an entry from its story, what to add or change. */
+	private get prompt(): StringKey {
+		const mode = this.options.entry?.mode;
+		return mode === 'add' ? 'record.addPrompt' : mode === 'change' ? 'record.changePrompt' : this.voiceOnly ? 'record.tapToStart' : 'record.prompt';
+	}
+
 	private setButton(recording: boolean): void {
 		const more = !recording && this.savedNote !== null;
+		// Changing a story, the button says a change; otherwise once there's an entry, it records more
+		const again = this.options.entry?.mode === 'change' ? 'record.sayChange' : 'record.more';
 		this.button.empty();
 		this.button.toggleClass('is-recording', recording);
 		this.button.toggleClass('is-more', more);
-		this.button.setAttribute('aria-label', t(recording ? 'record.stop' : more ? 'record.more' : 'record.start'));
+		this.button.setAttribute('aria-label', t(recording ? 'record.stop' : more ? again : 'record.start'));
 		setIcon(this.button.createSpan({ cls: 'jeong-record-button-icon' }), recording ? 'square' : 'mic');
 		this.timer.toggleClass('is-label', more);
-		if (more) this.timer.setText(t('record.more'));
+		if (more) this.timer.setText(t(again));
 		this.heading.toggleClass('is-recording', recording);
 		if (recording) {
 			this.heading.removeClass('is-saved');
 			this.heading.setText(t('record.recording.heading'));
-		} else if (!this.savedNote && !this.options.test) {
-			this.heading.setText(t(this.voiceOnly ? 'record.tapToStart' : 'record.prompt'));
+		} else if ((!this.savedNote || this.options.entry) && !this.options.test) {
+			this.heading.setText(t(this.prompt));
 		}
 	}
 
@@ -415,7 +445,8 @@ export class RecordModal extends Modal {
 			this.status.setText(t('record.saved'));
 			return;
 		}
-		if (this.savedNote) await this.addToEntry(this.savedNote, recording, result, tempPath);
+		if (this.savedNote && this.options.entry?.mode === 'change') await this.changeEntry(this.savedNote, result, tempPath);
+		else if (this.savedNote) await this.addToEntry(this.savedNote, recording, result, tempPath);
 		else await this.saveEntry(recording, result, tempPath);
 	}
 
@@ -448,6 +479,21 @@ export class RecordModal extends Modal {
 			this.button.disabled = false;
 			this.metrics.log({ event: 'error', where: 'add-recording', message });
 		}
+	}
+
+	/**
+	 * Change this story: what was said is only instructions, applied to the story; it isn't kept, and the
+	 * transcript stays as it was. Saying more changes the story again.
+	 */
+	private async changeEntry(note: TFile, result: Transcript, tempPath: string | null): Promise<void> {
+		if (tempPath) await deleteTemp(tempPath);
+		this.showStoryPane();
+		const changed = await reviseStory(this.app, this.options.llm, this.metrics, note, result.text, (progress) => this.status.setText(storyMessage(progress)));
+		await this.fillStory(note, true);
+		this.status.setText(t(changed ? 'record.changed' : 'story.failed'));
+		this.heading.setText(t('record.changePrompt'));
+		this.button.disabled = false;
+		this.setButton(false);
 	}
 
 	private async saveEntry(recording: Recording, result: Transcript, tempPath: string | null): Promise<void> {

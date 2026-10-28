@@ -9,6 +9,8 @@ import { OpenAI } from './openai';
 export interface ChatMessage {
 	role: 'system' | 'user' | 'assistant';
 	content: string;
+	/** Photos to look at, as base64 JPEGs (no data: prefix). */
+	images?: string[];
 }
 
 export interface ChatResult {
@@ -46,7 +48,7 @@ export class StoryWriter implements LanguageModel {
 		secret: (id: string) => string,
 	) {
 		this.models = {
-			ollama: new Ollama(() => settings().ollamaUrl, () => settings().storyModel),
+			ollama: new Ollama(() => settings().ollamaUrl, () => settings().storyModel, () => settings().photoModel),
 			claude: new Claude(() => secret(settings().claudeKey), () => settings().claudeModel),
 			openai: new OpenAI(() => secret(settings().openaiKey), () => settings().openaiModel),
 		};

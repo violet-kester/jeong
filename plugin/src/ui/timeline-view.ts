@@ -7,6 +7,8 @@ import { arrive, leave } from './motion';
 import { openButtonPill } from './open-button';
 import { paintMessage } from './story-messages';
 import { brushReveal } from '../paint/brush-reveal';
+import { storyText } from '../journal/story-text';
+import { StoryModal } from './story-modal';
 import { applyInk } from '../paint/ink';
 
 export const TIMELINE_VIEW = 'jeong-timeline';
@@ -566,11 +568,11 @@ export class TimelineView extends ItemView {
 		});
 		card.addEventListener('click', (e) => {
 			if (this.dragging.moved) return;
-			if (e.pointerType === 'mouse' || e.detail === 0) void this.openEntry(entry);
+			if (e.pointerType === 'mouse' || e.detail === 0) this.readStory(entry);
 			else void this.showPreview(entry);
 		});
 		card.addEventListener('keydown', (e) => {
-			if (e.key === 'Enter') void this.openEntry(entry);
+			if (e.key === 'Enter') this.readStory(entry);
 		});
 	}
 
@@ -638,9 +640,9 @@ export class TimelineView extends ItemView {
 		}
 	}
 
-	/** Opens the entry's note. (Not `open`: that name belongs to Obsidian's views, which call it to show the tab.) */
-	private async openEntry(entry: EntryInfo): Promise<void> {
-		await this.app.workspace.getLeaf(false).openFile(entry.file);
+	/** Opens the entry's story to read, with its picture; from there, its note or raw transcript open in Obsidian. */
+	private readStory(entry: EntryInfo): void {
+		new StoryModal(this.app, entry, this.plugin.settings.paintInk, (mode) => this.plugin.openRecorder({ note: entry.file, mode })).open();
 	}
 
 	/** The larger preview: the painting or first photo, the strip of other photos, the full summary, Open entry, and Illustrate. */
@@ -673,7 +675,7 @@ export class TimelineView extends ItemView {
 		const excerpt = entry.status === 'recorded' ? t('timeline.waiting') : entry.summary || (await this.excerpt(entry));
 		if (excerpt) card.createEl('p', { text: excerpt });
 		const actions = card.createDiv({ cls: 'jeong-timeline-card-actions' });
-		openButtonPill(actions, () => void this.openEntry(entry));
+		openButtonPill(actions, () => this.readStory(entry), t('story.read'));
 		if (this.canIllustrate(entry)) this.illustrateButton(actions, entry);
 	}
 
@@ -694,13 +696,7 @@ export class TimelineView extends ItemView {
 
 	/** The first couple of sentences of the entry, without frontmatter, labels, links line, or embeds. */
 	private async excerpt(entry: EntryInfo): Promise<string> {
-		const content = await this.app.vault.cachedRead(entry.file);
-		const body = content
-			.replace(/^---[\s\S]*?---/, '')
-			.replace(/!\[\[[^\]]*\]\]/g, '')
-			.replace(/^\*\[\[.*\]\]\*$/gm, '')
-			.replace(/^>.*$/gm, '')
-			.trim();
+		const body = storyText(await this.app.vault.cachedRead(entry.file));
 		return body.length > 280 ? `${body.slice(0, 280).trimEnd()}…` : body;
 	}
 

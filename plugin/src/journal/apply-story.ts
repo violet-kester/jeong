@@ -14,13 +14,16 @@ export async function applyStory(app: App, note: TFile, composed: ComposedEntry,
 	if (!folder) throw new Error('The entry has no folder');
 	const name = note.basename;
 
+	// A changed story (aiDraft empty) keeps the AI draft it started from
 	const draft = findByKind(app, folder, 'draft');
-	const draftText =
-		`---\nkind: draft\nentry: "[[${name}]]"\nmodel: ${model}\n---\n\n` +
-		`> [!note] ${t('files.aiDraft')}\n> ${t('files.draftAbout')} [[${name}|${t('files.yourStory')}]].\n\n` +
-		`${composed.aiDraft}\n`;
-	if (draft) await app.vault.modify(draft, draftText);
-	else await app.vault.create(normalizePath(`${folder.path}/${name} (AI draft).md`), draftText);
+	if (composed.aiDraft) {
+		const draftText =
+			`---\nkind: draft\nentry: "[[${name}]]"\nmodel: ${model}\n---\n\n` +
+			`> [!note] ${t('files.aiDraft')}\n> ${t('files.draftAbout')} [[${name}|${t('files.yourStory')}]].\n\n` +
+			`${composed.aiDraft}\n`;
+		if (draft) await app.vault.modify(draft, draftText);
+		else await app.vault.create(normalizePath(`${folder.path}/${name} (AI draft).md`), draftText);
+	}
 
 	// The recording player stays above the story; photos stay below it
 	const photos: unknown = app.metadataCache.getFileCache(note)?.frontmatter?.photos;
@@ -33,7 +36,7 @@ export async function applyStory(app: App, note: TFile, composed: ComposedEntry,
 		const top = embeds.filter((line) => !isPhoto(line));
 		const bottom = embeds.filter(isPhoto);
 		return (
-			`${frontmatter}\n${top.join('\n')}${top.length ? '\n\n' : ''}${relatedLine(name, true)}\n\n${composed.story}\n` +
+			`${frontmatter}\n${top.join('\n')}${top.length ? '\n\n' : ''}${relatedLine(name, !!draft || !!composed.aiDraft)}\n\n${composed.story}\n` +
 			(bottom.length ? `\n${bottom.join('\n')}\n` : '')
 		);
 	});

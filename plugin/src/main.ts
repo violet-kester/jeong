@@ -5,7 +5,7 @@ import { writeStory } from './compose/write-story';
 import { paintMessage, storyMessage } from './ui/story-messages';
 import { TIMELINE_VIEW, TimelineView } from './ui/timeline-view';
 import { DEFAULT_SETTINGS, JeongSettings, JeongSettingTab, OLD_PAINT_STYLES, PAINT_STYLE, type JeongTheme } from './settings';
-import { RecordModal } from './ui/record-modal';
+import { RecordModal, type RecordModalOptions } from './ui/record-modal';
 import { PerformanceModal } from './ui/performance-modal';
 import { Metrics } from './metrics/metrics';
 import { Painter } from './paint/painter';
@@ -159,8 +159,9 @@ export default class JeongPlugin extends Plugin {
 		}
 	}
 
-	openRecorder() {
-		new RecordModal(this.app, this.metrics, this.recordOptions()).open();
+	/** The recording window: a new entry, or (with `entry`) adding to or changing one. */
+	openRecorder(entry?: RecordModalOptions['entry']) {
+		new RecordModal(this.app, this.metrics, { ...this.recordOptions(), entry }).open();
 	}
 
 	private recordOptions() {

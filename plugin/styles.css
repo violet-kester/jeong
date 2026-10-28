@@ -2278,3 +2278,83 @@ body {
 }
 
 
+
+/* ---- Reading a story ----
+   A card on the timeline opens its story here: the picture, when it was, the title, and the story set for
+   reading, with the note and the raw transcript a tap away in Obsidian. */
+.modal.jeong.jeong-story {
+	width: min(46rem, 92vw);
+	max-height: 88vh;
+	padding: 0;
+	overflow: hidden;
+	border-radius: var(--jeong-space-2xs);
+	background: var(--jeong-card);
+	color: var(--jeong-ink);
+}
+
+.jeong-story .modal-content {
+	overflow-y: auto;
+	max-height: 88vh;
+}
+
+.jeong-story-page {
+	display: grid;
+	gap: var(--jeong-space-s);
+	padding: var(--jeong-space-l) var(--jeong-space-xl) var(--jeong-space-xl);
+}
+
+.jeong-story-picture {
+	width: 100%;
+	aspect-ratio: 5 / 3;
+	object-fit: cover;
+	border-radius: var(--jeong-space-3xs);
+}
+
+.jeong-story-strip {
+	display: flex;
+	gap: var(--jeong-space-2xs);
+	overflow-x: auto;
+}
+
+.jeong-story-strip img {
+	height: var(--jeong-space-2xl);
+	aspect-ratio: 1;
+	object-fit: cover;
+	border-radius: var(--jeong-space-3xs);
+}
+
+.jeong-story-meta {
+	font-family: var(--jeong-mono);
+	font-size: var(--jeong-step--2);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--jeong-text-muted);
+}
+
+.jeong.jeong-story h1.jeong-story-title {
+	margin: 0;
+	font-family: var(--jeong-display);
+	font-weight: 700;
+	font-size: var(--jeong-step-4);
+	line-height: 1.15;
+	text-wrap: balance;
+}
+
+.jeong-story-body {
+	font-family: var(--jeong-body);
+	font-size: var(--jeong-step-0);
+	line-height: 1.75;
+	max-width: 65ch;
+}
+
+.jeong-story-body p {
+	margin: 0 0 var(--jeong-space-s);
+}
+
+.jeong-story-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--jeong-space-2xs);
+	padding-top: var(--jeong-space-xs);
+	border-top: 1px solid var(--jeong-hairline);
+}

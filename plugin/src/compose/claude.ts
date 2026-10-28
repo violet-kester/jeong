@@ -27,7 +27,17 @@ export class Claude implements LanguageModel {
 			model,
 			max_tokens: 16000,
 			...(system ? { system } : {}),
-			messages: messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+			messages: messages
+				.filter((m) => m.role !== 'system')
+				.map((m) => ({
+					role: m.role as 'user' | 'assistant',
+					content: m.images?.length
+						? [
+								...m.images.map((data) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data } })),
+								{ type: 'text' as const, text: m.content },
+							]
+						: m.content,
+				})),
 			output_config: {
 				effort: 'medium',
 				...(options.schema ? { format: { type: 'json_schema' as const, schema: closedSchema(options.schema) as Record<string, unknown> } } : {}),

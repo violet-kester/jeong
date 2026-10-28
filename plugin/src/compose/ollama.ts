@@ -16,16 +16,19 @@ export class Ollama implements LanguageModel {
 	constructor(
 		private url: () => string,
 		private model: () => string,
+		/** The model that looks at photos; the story model may not see images. */
+		private photoModel: () => string = model,
 	) {}
 
 	async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResult> {
 		const started = performance.now();
+		const sees = messages.some((m) => m.images?.length);
 		const response = await requestUrl({
 			url: `${this.url().replace(/\/$/, '')}/api/chat`,
 			method: 'POST',
 			contentType: 'application/json',
 			body: JSON.stringify({
-				model: this.model(),
+				model: sees ? this.photoModel() : this.model(),
 				messages,
 				stream: false,
 				...(options.schema ? { format: options.schema } : {}),
@@ -48,16 +51,18 @@ export class Ollama implements LanguageModel {
 	 * something else (the painting model) has room. Ollama loads it again the next time it's asked.
 	 */
 	async unload(): Promise<void> {
-		try {
-			await requestUrl({
-				url: `${this.url().replace(/\/$/, '')}/api/generate`,
-				method: 'POST',
-				contentType: 'application/json',
-				body: JSON.stringify({ model: this.model(), keep_alive: 0 }),
-				throw: false,
-			});
-		} catch {
-			// Not running, or already unloaded
+		for (const model of new Set([this.model(), this.photoModel()])) {
+			try {
+				await requestUrl({
+					url: `${this.url().replace(/\/$/, '')}/api/generate`,
+					method: 'POST',
+					contentType: 'application/json',
+					body: JSON.stringify({ model, keep_alive: 0 }),
+					throw: false,
+				});
+			} catch {
+				// Not running, or already unloaded
+			}
 		}
 	}
 

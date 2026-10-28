@@ -224,6 +224,7 @@ export class Component {
 	register(cleanup: () => void): void {
 		this.cleanups.push(cleanup);
 	}
+	load(): void {}
 	unload(): void {
 		this.cleanups.forEach((cleanup) => cleanup());
 	}
@@ -290,6 +291,13 @@ export class Modal extends Component {
 export class Plugin {}
 export class PluginSettingTab {}
 export class Setting {}
+/** Markdown, roughly: each paragraph as a <p>, which is all a story needs here. */
+export const MarkdownRenderer = {
+	async render(_app: unknown, markdown: string, el: HTMLElement): Promise<void> {
+		for (const paragraph of markdown.split(/\n\s*\n/)) if (paragraph.trim()) el.createEl('p', { text: paragraph.trim() });
+	},
+};
+
 // Settings pieces the browser preview never shows
 export class SecretComponent {}
 export class AbstractInputSuggest<T> {

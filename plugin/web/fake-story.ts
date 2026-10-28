@@ -18,3 +18,18 @@ export async function writeStory(app: never, _ollama: unknown, _metrics: unknown
 	onProgress('done');
 	return true;
 }
+
+/** Demo only: "changes" the story by noting the instructions under it, the way a real change would read them. */
+export async function reviseStory(app: never, _ollama: unknown, _metrics: unknown, note: TFile, instructions: string, onProgress: (progress: StoryProgress) => void): Promise<boolean> {
+	for (const step of ['rewrite', 'check', 'summary'] as const) {
+		onProgress(step);
+		await wait(900);
+	}
+	const fm = (app as { metadataCache: { getFileCache: (file: TFile) => { frontmatter?: Record<string, unknown> } | null } }).metadataCache.getFileCache(note)?.frontmatter ?? {};
+	const title = typeof fm.title === 'string' ? fm.title : note.basename;
+	const summary = typeof fm.summary === 'string' ? fm.summary : '';
+	const story = `In the demo, a change is only pretended: here is what you asked for.\n\n${instructions}`;
+	await applyStory(app, note as never, { story, aiDraft: '', title, summary, flagged: [] }, 'demo');
+	onProgress('done');
+	return true;
+}

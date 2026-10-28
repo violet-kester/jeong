@@ -15,6 +15,8 @@ export interface JeongSettings {
 	ollamaUrl: string;
 	/** The Ollama model that writes stories and summaries. */
 	storyModel: string;
+	/** The Ollama model that looks at an entry's photos, so a painting can take cues from them. */
+	photoModel: string;
 	/** The name of the Anthropic API key in Obsidian's keychain (never the key itself). */
 	claudeKey: string;
 	claudeModel: string;
@@ -48,18 +50,23 @@ export type LiveMode = 'hybrid' | 'moonshine';
 
 /**
  * A raw expressionist woodcut: jagged gouged lines, the whole sheet carved, its fill made from the scene's own
- * textures (no swirls, steam or smoke unless the scene has them), and faces left blank. Black ink only, because
+ * textures (no swirls, steam or smoke unless the scene has them). How people look is asked separately (see
+ * painter.ts), since photos can show it. Black ink only, because
  * the model holds to one color reliably only in black; Jeong shows it in the ink color from settings.
  */
 export const PAINT_STYLE =
 	'Expressionist woodcut: jagged gouged lines and harsh solid shapes, raw, graphic and full of energy, carved by hand, never neat, never a clean drawing. ' +
 	'The whole sheet is alive with carved marks: the space around the subject is cut into expressive patterns made from the textures in the scene itself, its surfaces, weather, light and movement. ' +
 	'No swirls unless something in the scene swirls; no steam or smoke unless the scene has them. Strong solid blacks against bold whites, high contrast. ' +
-	'Any person has a blank, faceless head and no sign of gender. ' +
 	'One ink only, black, on plain off-white paper. No text, no letters, no words, no signature, no initials, no borders, no frame.';
 
 /** Earlier built-in styles: a vault that still has one of these, unedited, gets the current one. */
 export const OLD_PAINT_STYLES = [
+	'Expressionist woodcut: jagged gouged lines and harsh solid shapes, raw, graphic and full of energy, carved by hand, never neat, never a clean drawing. ' +
+		'The whole sheet is alive with carved marks: the space around the subject is cut into expressive patterns made from the textures in the scene itself, its surfaces, weather, light and movement. ' +
+		'No swirls unless something in the scene swirls; no steam or smoke unless the scene has them. Strong solid blacks against bold whites, high contrast. ' +
+		'Any person has a blank, faceless head and no sign of gender. ' +
+		'One ink only, black, on plain off-white paper. No text, no letters, no words, no signature, no initials, no borders, no frame.',
 	'Expressionist woodcut in the spirit of Edvard Munch, full of energy: bold gouged lines and confident solid shapes, carved by hand, loose and alive, never neat, never a clean drawing. ' +
 		'The whole sheet is alive with carved marks. The space around the subject is filled with expressive rhythmic patterns made from the scene itself: ' +
 		'rain becomes slanting cuts, a road becomes rippling grain, steam becomes rising ribbons, a tablecloth becomes its weave, light becomes radiating strokes. ' +
@@ -90,6 +97,7 @@ export const DEFAULT_SETTINGS: JeongSettings = {
 	storyProvider: 'ollama',
 	ollamaUrl: 'http://localhost:11434',
 	storyModel: 'granite4:tiny-h',
+	photoModel: 'granite3.2-vision',
 	claudeKey: '',
 	claudeModel: 'claude-opus-5-5',
 	openaiKey: '',
@@ -193,6 +201,7 @@ export class JeongSettingTab extends PluginSettingTab {
 		const provider = this.plugin.settings.storyProvider;
 		if (provider === 'ollama') {
 			this.textSetting('storyModel', t('settings.storyModel.name'), t('settings.storyModel.desc'));
+			this.textSetting('photoModel', t('settings.photoModel.name'), t('settings.photoModel.desc'));
 			this.textSetting('ollamaUrl', t('settings.ollamaUrl.name'), t('settings.ollamaUrl.desc'));
 		} else if (provider === 'claude') {
 			this.keySetting('claudeKey', t('settings.claudeKey.desc'));
@@ -285,7 +294,7 @@ export class JeongSettingTab extends PluginSettingTab {
 	}
 
 	/** A text setting that falls back to its default when left empty. */
-	private textSetting(key: 'storyModel' | 'ollamaUrl' | 'claudeModel' | 'openaiModel' | 'openaiImageModel' | 'xaiImageModel', name: string, desc: string): void {
+	private textSetting(key: 'storyModel' | 'photoModel' | 'ollamaUrl' | 'claudeModel' | 'openaiModel' | 'openaiImageModel' | 'xaiImageModel', name: string, desc: string): void {
 		new Setting(this.containerEl)
 			.setName(name)
 			.setDesc(desc)

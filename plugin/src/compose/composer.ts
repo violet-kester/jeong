@@ -20,6 +20,13 @@ const SUMMARY_RULES = `You write a title and a summary for someone's own journal
 - Summary: 1 to 3 sentences, written as the person themselves ("I", "my"). Never say "the narrator", "the speaker", "the author", or "they".
 - Use only what's in the entry. Don't describe the day as quiet, busy, happy, or anything else unless the entry says so.`;
 
+const REVISE_RULES = `You change someone's own journal entry (STORY) the way they asked, out loud (INSTRUCTIONS).
+- The INSTRUCTIONS are not part of the story. Never add them, or anything about them, to it.
+- Change only what they ask. Keep everything else exactly as it is, word for word.
+- A correction (a name, a spelling, a date, a fact) is made everywhere it belongs.
+- Anything they ask to add goes where it fits in the story, in their own voice.
+- Write only the whole entry, changed. No title, no notes about what you did.`;
+
 const CHECK_RULES = `You compare a written journal entry (STORY) with what the person actually said (TRANSCRIPT).
 List every sentence from the STORY that states something not supported by the TRANSCRIPT: invented facts, names, feelings, or events.
 Rewording is fine. Only list sentences whose meaning isn't in the transcript. If everything is supported, return an empty list.`;
@@ -89,6 +96,51 @@ export async function composeEntry(
 		flagged = await check(llm, transcript, story, contextTokens, onStep);
 	}
 
+	const named = await titleAndSummary(llm, transcript, story, contextTokens, onStep);
+	return { story, aiDraft: draft.content, title: named.title, summary: named.summary, flagged: [...flagged, ...named.flagged] };
+}
+
+/**
+ * Changes an entry the way the person asked, out loud. Their words are instructions, never part of the story:
+ * only what they ask changes, the rest stays word for word. The title and summary follow the changed story,
+ * and both are checked against the transcript and the instructions together, since a correction is a fact too.
+ * The AI draft isn't touched (aiDraft is empty).
+ */
+export async function reviseEntry(
+	llm: LanguageModel,
+	transcript: string,
+	current: string,
+	instructions: string,
+	onStep: (step: ComposeStep, result?: ChatResult) => void,
+): Promise<ComposedEntry> {
+	const words = `${transcript} ${current} ${instructions}`.split(/\s+/).length;
+	const contextTokens = Math.min(65_536, Math.max(8192, Math.ceil(words * 1.6 * 1.5) + 2048));
+	onStep('rewrite');
+	const revised = await llm.chat(
+		[
+			{ role: 'system', content: REVISE_RULES },
+			{ role: 'user', content: `STORY:\n${current}\n\nINSTRUCTIONS:\n${instructions}` },
+		],
+		{ contextTokens },
+	);
+	onStep('rewrite', revised);
+	const story = revised.content || current;
+	const sources = `${transcript}\n\nCORRECTIONS AND ADDITIONS THE PERSON ASKED FOR:\n${instructions}`;
+	onStep('check');
+	const flagged = await check(llm, sources, story, contextTokens, onStep);
+	const named = await titleAndSummary(llm, sources, story, contextTokens, onStep);
+	return { story, aiDraft: '', title: named.title, summary: named.summary, flagged: [...flagged, ...named.flagged] };
+}
+
+/** A title and summary for the story, in the person's own voice, checked against what they said. */
+async function titleAndSummary(
+	llm: LanguageModel,
+	transcript: string,
+	story: string,
+	contextTokens: number,
+	onStep: (step: ComposeStep, result?: ChatResult) => void,
+): Promise<{ title: string; summary: string; flagged: string[] }> {
+	const flagged: string[] = [];
 	onStep('summary');
 	const summaryResult = await llm.chat(
 		[
@@ -141,13 +193,7 @@ export async function composeEntry(
 		flagged.push(...(await check(llm, transcript, summary ?? '', contextTokens, onStep)));
 	}
 
-	return {
-		story,
-		aiDraft: draft.content,
-		title: (title ?? '').replace(/^["“']|["”']$/g, '').trim(),
-		summary: (summary ?? '').trim(),
-		flagged,
-	};
+	return { title: (title ?? '').replace(/^["“']|["”']$/g, '').trim(), summary: (summary ?? '').trim(), flagged };
 }
 
 async function check(
