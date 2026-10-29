@@ -117,12 +117,15 @@ export class RecordModal extends Modal {
 		const side = (this.side = contentEl.createDiv({ cls: 'jeong-entry-side' }));
 		side.createDiv({ cls: 'jeong-entry-day', text: now.format('D') });
 		side.createDiv({ cls: 'jeong-entry-month', text: now.format('MMMM') });
-		side.createDiv({ cls: 'jeong-entry-when', text: now.format('dddd · LT') });
+		// The day and the time each on their own line, so neither breaks partway
+		const when = side.createDiv({ cls: 'jeong-entry-when' });
+		when.createDiv({ text: now.format('dddd') });
+		when.createDiv({ text: now.format('LT') });
 		// Photos can be added along with more words; changing the story is words only
 		if (entry?.mode === 'change') this.photos = new PhotoTray(createDiv());
 		else {
-			this.photos = new PhotoTray(side);
 			side.createDiv({ cls: 'jeong-entry-label', text: t('record.photos') });
+			this.photos = new PhotoTray(side);
 		}
 
 		// Right: the page

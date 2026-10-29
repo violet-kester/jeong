@@ -39,7 +39,7 @@ export function parseFrontmatter(content: string): Record<string, unknown> | und
 			result[key] = list;
 		} else {
 			list = null;
-			result[key] = value === '[]' ? [] : unquote(value);
+			result[key] = value === '[]' ? [] : value === 'true' ? true : value === 'false' ? false : unquote(value);
 		}
 	}
 	return result;
@@ -319,6 +319,11 @@ export class FsVault extends Events {
 	private async remove(file: TAbstractFile): Promise<void> {
 		await this.removeEntry(file.path);
 		this.files.delete(file.path);
+		// A folder takes everything in it along
+		for (const path of [...this.files.keys()].filter((path) => path.startsWith(`${file.path}/`))) {
+			this.files.delete(path);
+			this.cache.delete(path);
+		}
 		file.parent?.children.splice(file.parent.children.indexOf(file), 1);
 		this.trigger('delete', file);
 	}

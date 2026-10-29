@@ -128,6 +128,51 @@ button {
 	background: rgba(128, 128, 128, 0.25);
 }
 
+/* Obsidian's right-click menu */
+.menu {
+	min-width: 180px;
+	padding: 4px;
+	border-radius: 8px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+	font: 14px/1.4 system-ui, sans-serif;
+}
+
+.menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	border-radius: 5px;
+	cursor: pointer;
+}
+
+.menu-item:hover {
+	background: rgba(128, 128, 128, 0.15);
+}
+
+.menu-item.is-warning {
+	color: #C0392B;
+}
+
+.menu-item-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+/* A small yes-or-no pop-up, like Delete entry */
+.modal-button-container {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.modal-button-container button.mod-warning {
+	background: #C0392B;
+	color: #FFF;
+}
+
 /* Obsidian's floating toolbar on phones, drawn over everything except pop-ups */
 .mobile-navbar {
 	position: fixed;

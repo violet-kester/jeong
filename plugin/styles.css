@@ -337,7 +337,11 @@ body {
 	display: flex;
 	flex-direction: column;
 	gap: var(--jeong-space-3xs);
-	padding: var(--jeong-space-xl) var(--jeong-space-m) var(--jeong-space-m) var(--jeong-space-l);
+	min-height: 0;
+	/* A long strip of photos scrolls under the date */
+	overflow-y: auto;
+	/* the same on both sides, so the photos sit centred in the column */
+	padding: var(--jeong-space-xl) var(--jeong-space-l) var(--jeong-space-m);
 	border-right: 1px solid var(--jeong-hairline);
 	background: var(--jeong-entry-side);
 }
@@ -524,7 +528,8 @@ body {
 	align-items: flex-end;
 	justify-content: space-between;
 	gap: var(--jeong-space-m);
-	min-height: 10.625rem;
+	/* tall enough for the button, its time underneath, and its ring above, so the ring is never cut off */
+	min-height: max(10.625rem, calc(var(--jeong-space-3xl) + var(--jeong-space-s) * 2 + var(--jeong-space-l)));
 	margin-top: var(--jeong-space-xs);
 }
 
@@ -763,11 +768,16 @@ body {
 }
 
 /* Photos in the date column: small squares, with a dashed square to add more */
-.jeong-entry-side .jeong-photos {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--jeong-space-2xs);
+.jeong-entry-label {
 	margin-top: var(--jeong-space-l);
+	margin-bottom: var(--jeong-space-3xs);
+}
+
+.jeong-entry-side .jeong-photos {
+	/* A strip down the column: the place to add photos, then each photo across the full width at its own shape */
+	display: flex;
+	flex-direction: column;
+	gap: var(--jeong-space-2xs);
 	padding: 0;
 	border: 0;
 	background: none;
@@ -782,27 +792,39 @@ body {
 	display: contents;
 }
 
-.jeong-entry-side .jeong-photos-item {
-	width: var(--jeong-space-2xl);
-	height: var(--jeong-space-2xl);
+.jeong-entry-side .jeong-photos-item,
+.jeong-entry-side .jeong-photos-item.is-main {
+	width: 100%;
+	height: auto;
+	flex-shrink: 0;
 	border-radius: 0.1875rem;
 }
 
+.jeong-entry-side .jeong-photos-item img {
+	display: block;
+	height: auto;
+}
+
+/* Square while there are no photos; a slim bar above them once there are */
 .jeong .jeong-entry-side .jeong-photos button.jeong-photos-drop {
-	width: var(--jeong-space-2xl);
-	height: var(--jeong-space-2xl);
+	order: -1;
+	width: 100%;
+	height: auto;
+	aspect-ratio: 1;
+	flex-shrink: 0;
 	min-height: 0;
 	padding: 0;
 	border: 1px dashed var(--jeong-hairline);
 	border-radius: 0.1875rem;
 }
 
-.jeong-entry-side .jeong-photos-drop span:not(.jeong-photos-icon) {
-	display: none;
+.jeong .jeong-entry-side .jeong-photos:has(.jeong-photos-item) button.jeong-photos-drop {
+	aspect-ratio: auto;
+	height: var(--jeong-space-xl);
 }
 
-.jeong-entry-label {
-	margin-top: var(--jeong-space-2xs);
+.jeong-entry-side .jeong-photos-drop span:not(.jeong-photos-icon) {
+	display: none;
 }
 
 .jeong-record-more {
@@ -940,10 +962,15 @@ body {
 	display: contents;
 }
 
-.jeong-voice-foot .jeong-photos-item {
-	width: var(--jeong-space-xl);
+.jeong-voice-foot .jeong-photos-item,
+.jeong-voice-foot .jeong-photos-item.is-main {
+	width: auto;
 	height: var(--jeong-space-xl);
-	border-radius: 999rem;
+	border-radius: 0.375rem;
+}
+
+.jeong-voice-foot .jeong-photos-item img {
+	width: auto;
 }
 
 .jeong .jeong-voice-foot .jeong-photos button.jeong-photos-drop,
@@ -1319,9 +1346,16 @@ body {
 	cursor: grab;
 	/* dragging pans the year; it never selects the numerals or card text */
 	user-select: none;
+	/* no scrollbars: their solid tracks cut the sky off short of the edges; drag, the wheel, and the sky ruler
+	   (which shows where you are) get around instead */
+	scrollbar-width: none;
 	/* whatever scrolls up under the header and bar fades away slowly, over a long, soft stretch, so nothing
 	   is cut off at an edge */
 	mask-image: linear-gradient(transparent, rgba(0, 0, 0, 0.2) calc(var(--jeong-timeline-top, 0rem) - 1.5rem), #000 calc(var(--jeong-timeline-top, 0rem) + 4.5rem));
+}
+
+.jeong-timeline-scroller::-webkit-scrollbar {
+	display: none;
 }
 
 /*
@@ -1860,6 +1894,11 @@ body {
 	opacity: 1;
 }
 
+/* The picture area is a set height (cards are stacked by it), so a photo fits in it whole; paintings are made to fill it */
+.jeong-timeline-entry-photo img:not(.jeong-painting) {
+	object-fit: contain;
+}
+
 /* A new painting, brushed on (src/paint/brush-reveal.ts); on a card it takes turns with the photos like they do */
 .jeong-brush-reveal {
 	position: absolute;
@@ -2392,10 +2431,11 @@ body {
 /* Main photo and strip on timeline cards */
 .jeong-timeline-card-photo {
 	display: block;
-	width: 100%;
+	width: auto;
 	max-width: 100%;
-	max-height: 12.5rem;
-	object-fit: cover;
+	height: auto;
+	max-height: 20rem;
+	margin: 0 auto;
 	border-radius: 0.25rem;
 }
 
@@ -2403,12 +2443,13 @@ body {
 	display: flex;
 	gap: var(--jeong-space-2xs);
 	align-items: center;
+	overflow-x: auto;
 }
 
 .jeong-timeline-card-strip img {
-	width: var(--jeong-space-xl);
+	flex-shrink: 0;
+	width: auto;
 	height: var(--jeong-space-xl);
-	object-fit: cover;
 	border-radius: 0.1875rem;
 }
 
@@ -2445,9 +2486,12 @@ body {
 }
 
 .jeong-story-picture {
-	width: 100%;
-	aspect-ratio: 5 / 3;
-	object-fit: cover;
+	display: block;
+	width: auto;
+	max-width: 100%;
+	height: auto;
+	max-height: 60vh;
+	margin: 0 auto;
 	border-radius: var(--jeong-space-3xs);
 }
 
@@ -2458,9 +2502,8 @@ body {
 }
 
 .jeong-story-strip img {
+	flex-shrink: 0;
 	height: var(--jeong-space-2xl);
-	aspect-ratio: 1;
-	object-fit: cover;
 	border-radius: var(--jeong-space-3xs);
 }
 

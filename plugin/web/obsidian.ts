@@ -326,6 +326,9 @@ export class Menu {
 			row.createDiv({ cls: 'menu-item-title', text: entry.title });
 			row.addEventListener('click', () => void entry.click());
 		}
+		// Kept on screen, like Obsidian's
+		const box = menu.getBoundingClientRect();
+		menu.setCssProps({ left: `${Math.min(event.clientX, innerWidth - box.width - 8)}px`, top: `${Math.min(event.clientY, innerHeight - box.height - 8)}px` });
 		setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }));
 		return this;
 	}

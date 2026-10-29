@@ -58,6 +58,7 @@ interface Layout {
 	stemOffset: number;
 }
 const PREVIEW_REST_MS = 300; // the pointer rests this long on a card before its preview shows, so passing over doesn't flash it
+const PREVIEW_LINGER_MS = 1500; // the preview stays this long after the pointer leaves a card, time to reach it (it opens in the corner) and press Illustrate
 
 type Scale = 'year' | 'month' | 'week' | 'day';
 const SCALES: Scale[] = ['year', 'month', 'week', 'day'];
@@ -783,7 +784,7 @@ export class TimelineView extends ItemView {
 
 	private scheduleHide(): void {
 		window.clearTimeout(this.showTimer);
-		this.hideTimer = window.setTimeout(() => void leave(this.preview), 350);
+		this.hideTimer = window.setTimeout(() => void leave(this.preview), PREVIEW_LINGER_MS);
 	}
 
 	/** Opens the entry's story to read, with its picture; from there, its note or raw transcript open in Obsidian. */
