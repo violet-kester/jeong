@@ -15,6 +15,13 @@
 	--jeong-ink: var(--jeong-meok);
 	--jeong-text-muted: #7E786F;
 
+	/* The timeline's day: walnut ink (see ../styles/colors.css) */
+	--jeong-day-morning: #F7EEDC;
+	--jeong-day-noon: #ECDDC2;
+	--jeong-day-night: #A98A66;
+	--jeong-day-sunset: rgba(201, 103, 63, 0.14);
+	--jeong-day-dusk: rgba(42, 48, 72, 0.24);
+
 	--jeong-card: #FBF6EC; /* solid paper, so lines pass behind cards, not through them */
 	--jeong-hairline: rgba(42, 39, 36, 0.22);
 	--jeong-entry-bg: #F7F2E8;
@@ -28,17 +35,7 @@
 	--jeong-sky-sunset: #C9673F;
 	--jeong-sky-dusk: #5A5A78;
 	--jeong-sky-night: #2A3048;
-	/* The timeline page, from noon at the line outward: each step darker than the last (see .jeong-timeline-track) */
-	--jeong-page-noon: #F6E9CA;
-	--jeong-page-glow: #F1E3C6;
-	--jeong-page-walnut: #ECDDC2;
-	--jeong-page-gold: #C8AB85;
-	--jeong-page-coral: #C08D69;
-	--jeong-page-red: #B18766;
-	--jeong-page-violet: #8B796F;
-	--jeong-page-dusk: #857367;
-	--jeong-page-night: #836F5D;
-	--jeong-deep-night: #22263A; /* past either end of a busy day */
+	--jeong-deep-night: #22263A; /* deep space, past either end of a busy day */
 	--jeong-stars: var(--jeong-stars-light);
 	--jeong-stars-1: var(--jeong-stars-light-1);
 	--jeong-stars-2: var(--jeong-stars-light-2);
@@ -49,6 +46,12 @@ body.theme-dark:not(.jeong-theme-light) .jeong,
 body.jeong-theme-dark .jeong {
 	--jeong-ink: #EEE5D3;
 	--jeong-text-muted: #A69C8D;
+
+	--jeong-day-morning: #433526;
+	--jeong-day-noon: #2C231A;
+	--jeong-day-night: #0E0C0A;
+	--jeong-day-sunset: rgba(162, 78, 51, 0.14);
+	--jeong-day-dusk: rgba(40, 46, 74, 0.5);
 
 	--jeong-card: #29231D;
 	--jeong-hairline: rgba(238, 229, 211, 0.22);
@@ -63,20 +66,16 @@ body.jeong-theme-dark .jeong {
 	--jeong-sky-sunset: #A24E33;
 	--jeong-sky-dusk: #434662;
 	--jeong-sky-night: #1E2234;
-	--jeong-page-noon: #7A6849;
-	--jeong-page-glow: #534632;
-	--jeong-page-walnut: #2C231A;
-	--jeong-page-gold: #2B2218;
-	--jeong-page-coral: #2E1C17;
-	--jeong-page-red: #2F1A14;
-	--jeong-page-violet: #1D1D26;
-	--jeong-page-dusk: #1D1D24;
-	--jeong-page-night: #131317;
 	--jeong-deep-night: #0B0C12;
 	--jeong-stars: var(--jeong-stars-dark);
 	--jeong-stars-1: var(--jeong-stars-dark-1);
 	--jeong-stars-2: var(--jeong-stars-dark-2);
 	--jeong-stars-3: var(--jeong-stars-dark-3);
+}
+
+/* Midnight at the top of the timeline's day: its night, a little lifted. After the theme colors, so it follows them */
+.jeong {
+	--jeong-day-midnight: color-mix(in srgb, var(--jeong-day-night) 55%, var(--jeong-day-noon));
 }
 
 /* The Theme setting: Jeong's own paper or ink, whichever theme Obsidian uses.
@@ -1053,16 +1052,33 @@ body {
 	overflow: hidden;
 	position: relative;
 	/* past either end of a busy day, darker than the day's own night in either theme */
-	/* the day's edge, like the top of the page at rest, so nothing lighter shows where the timeline fades under
-	   the header; deepening with the night when a busy day's cards reach up into it (the timeline sets that) */
-	background: var(--jeong-page-dusk);
+	/* the timeline's sky, set out in one place for the page and the sky ruler, which draw it alike */
+	--jeong-axis: 56%;
+	--jeong-morning: var(--jeong-axis); /* from the top of the day to the line */
+	--jeong-night: calc(100% - var(--jeong-axis)); /* from the line to the bottom of the day */
+	/* its own stacking context, so the backdrop below sits behind the timeline and above whatever the theme paints */
+	isolation: isolate;
+	background: var(--jeong-day-midnight);
+}
+
+/* Midnight, like the top of the sky, behind everything, so nothing lighter shows where the timeline fades under
+   the header; deepening into deep space when a busy day's cards reach up into it (the timeline sets that). Its
+   own layer, because themes such as Border make every view's background see-through. */
+.jeong-timeline-backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background-color: var(--jeong-day-midnight);
+	pointer-events: none;
 }
 
 /* Full bleed: the timeline runs right up under the header and bar, which float over it on frosted glass.
    The glass carries a little of the night sky at the very top and melts into the timeline just below the
-   controls. It stops short of the sky ruler, which runs clear to the top edge. */
-.jeong-timeline::before {
-	content: "";
+   controls. It stops short of the sky ruler, which runs clear to the top edge. Up in deep space, its tints
+   take on the ink too (the timeline sets them), so it never reads as a grey band over the dark. */
+.jeong-timeline-glass {
+	--jeong-glass-sky: var(--jeong-sky-night);
+	--jeong-glass-top: var(--jeong-day-midnight);
 	position: absolute;
 	top: 0;
 	left: var(--jeong-space-2xs);
@@ -1070,7 +1086,7 @@ body {
 	height: calc(var(--jeong-timeline-top, 0rem) + var(--jeong-space-l));
 	z-index: 5;
 	pointer-events: none;
-	background: linear-gradient(color-mix(in srgb, var(--jeong-sky-night) 16%, transparent), color-mix(in srgb, var(--jeong-page-dusk) 55%, transparent) 70%, transparent);
+	background: linear-gradient(color-mix(in srgb, var(--jeong-glass-sky) 16%, transparent), color-mix(in srgb, var(--jeong-glass-top) 55%, transparent) 70%, transparent);
 	-webkit-backdrop-filter: blur(0.375rem);
 	backdrop-filter: blur(0.375rem);
 	mask-image: linear-gradient(#000 40%, transparent);
@@ -1309,42 +1325,40 @@ body {
 }
 
 /*
- * One day fills the view at rest, brightest at the line and darker with every step away from it, up or down:
- * noon's glow, walnut, then a short golden, coral and red sunset (sunrise above), violet dusk by the day's
- * edge (midnight), night, and deep night past it. The timeline sets how tall that day is (--jeong-morning
- * above the line, --jeong-night below it), so at rest only the day shows; deep night appears only where a
- * busy day's cards reach past it. The colors are the --jeong-page-* tokens at the top of this file.
+ * The sky: one day fills the view at rest, brightest at the line, darkening toward midnight at the top and down
+ * through a sunset to a walnut night at the bottom. When a busy day's cards reach past it, up or down, the page
+ * runs on into deep space; at rest none of it shows. The timeline sets how tall the day is (--jeong-morning above
+ * the line, --jeong-night below it) on the view, so the page and the sky ruler's map of it paint the same sky.
  */
-.jeong-timeline-track {
-	--jeong-axis: 56%;
-	--jeong-morning: var(--jeong-axis); /* from the top of the day to the line */
-	--jeong-night: calc(100% - var(--jeong-axis)); /* from the line to the bottom of the day */
+.jeong-sky {
 	--jeong-dawn: calc(var(--jeong-axis) - var(--jeong-morning)); /* where the day starts: the top, unless cards push the line down */
 	--jeong-day-end: calc(var(--jeong-axis) + var(--jeong-night));
+	background:
+		/* deep space past either end of the day, eased in so it never ends on an edge */
+		linear-gradient(
+			var(--jeong-deep-night) calc(var(--jeong-dawn) - var(--jeong-morning) * 1.5),
+			color-mix(in srgb, var(--jeong-deep-night) 70%, transparent) calc(var(--jeong-dawn) - var(--jeong-morning) * 0.6),
+			transparent var(--jeong-dawn),
+			transparent var(--jeong-day-end),
+			color-mix(in srgb, var(--jeong-deep-night) 70%, transparent) calc(var(--jeong-day-end) + var(--jeong-night) * 0.6),
+			var(--jeong-deep-night) calc(var(--jeong-day-end) + var(--jeong-night) * 1.5)
+		),
+		/* the sky lightly echoed: a sunset band below the line, then indigo settling at the bottom */
+		linear-gradient(transparent calc(var(--jeong-axis) + var(--jeong-night) * 0.14), var(--jeong-day-sunset) calc(var(--jeong-axis) + var(--jeong-night) * 0.5), var(--jeong-day-dusk) var(--jeong-day-end)),
+		/* one day around the line: dark at midnight above and below, lighter by 6 AM and 6 PM, brightest at noon */
+		linear-gradient(
+			var(--jeong-day-midnight) var(--jeong-dawn),
+			var(--jeong-day-noon) calc(var(--jeong-dawn) + var(--jeong-morning) * 0.5),
+			color-mix(in srgb, var(--jeong-day-morning) 85%, var(--jeong-sky-noon)) var(--jeong-axis),
+			var(--jeong-day-noon) calc(var(--jeong-axis) + var(--jeong-night) * 0.5),
+			var(--jeong-day-night) var(--jeong-day-end)
+		);
+}
+
+.jeong-timeline-track {
 	position: relative;
 	height: 100%;
 	min-height: 20rem;
-	background: linear-gradient(
-		var(--jeong-deep-night) calc(var(--jeong-axis) - var(--jeong-morning) * 2.5),
-		var(--jeong-page-night) calc(var(--jeong-axis) - var(--jeong-morning) * 1.35),
-		var(--jeong-page-dusk) calc(var(--jeong-axis) - var(--jeong-morning)),
-		var(--jeong-page-violet) calc(var(--jeong-axis) - var(--jeong-morning) * 0.87),
-		var(--jeong-page-red) calc(var(--jeong-axis) - var(--jeong-morning) * 0.75),
-		var(--jeong-page-coral) calc(var(--jeong-axis) - var(--jeong-morning) * 0.66),
-		var(--jeong-page-gold) calc(var(--jeong-axis) - var(--jeong-morning) * 0.55),
-		var(--jeong-page-walnut) calc(var(--jeong-axis) - var(--jeong-morning) * 0.45),
-		var(--jeong-page-glow) calc(var(--jeong-axis) - var(--jeong-morning) * 0.12),
-		var(--jeong-page-noon) var(--jeong-axis),
-		var(--jeong-page-glow) calc(var(--jeong-axis) + var(--jeong-night) * 0.12),
-		var(--jeong-page-walnut) calc(var(--jeong-axis) + var(--jeong-night) * 0.45),
-		var(--jeong-page-gold) calc(var(--jeong-axis) + var(--jeong-night) * 0.55),
-		var(--jeong-page-coral) calc(var(--jeong-axis) + var(--jeong-night) * 0.66),
-		var(--jeong-page-red) calc(var(--jeong-axis) + var(--jeong-night) * 0.75),
-		var(--jeong-page-violet) calc(var(--jeong-axis) + var(--jeong-night) * 0.87),
-		var(--jeong-page-dusk) var(--jeong-day-end),
-		var(--jeong-page-night) calc(var(--jeong-axis) + var(--jeong-night) * 1.35),
-		var(--jeong-deep-night) calc(var(--jeong-axis) + var(--jeong-night) * 2.5)
-	);
 }
 
 /* Obsidian's header strip (back, forward, title) floats see-through over the timeline too */
@@ -1472,9 +1486,9 @@ body {
 }
 
 /*
- * The sky ruler: the whole day, midnight to noon to midnight, in a strip down the left edge of the view. It
- * stays put while the page scrolls; a soft marker on it shows which part of the day is in view, and a click
- * anywhere on it goes to that time of day.
+ * The sky ruler: a strip down the left edge of the view that stays put. The day runs midnight to midnight in
+ * the sky's colors, changing where the page does, between two beads of ink, the deep space past either end.
+ * A soft marker shows the part of the day in view; out in deep space it rests in the ink. A click goes there.
  */
 .jeong-timeline-sky {
 	position: absolute;
@@ -1484,19 +1498,45 @@ body {
 	width: var(--jeong-space-2xs);
 	z-index: 5;
 	cursor: pointer;
-	/* midnight, dawn, morning, noon in the middle, afternoon, sunset, dusk, midnight */
+	/* the ink of deep space at either end, easing into the night at the day's edges */
 	background: linear-gradient(
-		var(--jeong-sky-night) 0%,
-		var(--jeong-sky-night) 6%,
-		var(--jeong-sky-dusk) 15%,
-		var(--jeong-sky-dawn) 25%,
-		var(--jeong-sky-morning) 34%,
-		var(--jeong-sky-noon) 43%,
-		var(--jeong-sky-noon) 56%,
-		var(--jeong-sky-afternoon) 65%,
-		var(--jeong-sky-sunset) 75%,
-		var(--jeong-sky-dusk) 85%,
-		var(--jeong-sky-night) 94%,
+		var(--jeong-deep-night) calc(var(--jeong-sky-cap) * 0.25),
+		var(--jeong-sky-night) var(--jeong-sky-cap),
+		transparent var(--jeong-sky-cap),
+		transparent calc(100% - var(--jeong-sky-cap)),
+		var(--jeong-sky-night) calc(100% - var(--jeong-sky-cap)),
+		var(--jeong-deep-night) calc(100% - var(--jeong-sky-cap) * 0.25)
+	);
+}
+
+.jeong-timeline-sky-map {
+	position: absolute;
+	top: var(--jeong-sky-cap);
+	bottom: var(--jeong-sky-cap);
+	left: 0;
+	right: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+/*
+ * The day on the ruler, in the sky's own brighter colors, changing where the page does: noon gold at the line,
+ * the sunset where the page's sunset is, night where it turns to walnut night, midnight at either end
+ */
+.jeong-timeline-sky-day {
+	transform-origin: top;
+	background: linear-gradient(
+		var(--jeong-sky-night) 0,
+		var(--jeong-sky-night) calc(var(--jeong-morning) * 0.12),
+		var(--jeong-sky-dusk) calc(var(--jeong-morning) * 0.3),
+		var(--jeong-sky-dawn) calc(var(--jeong-morning) * 0.5),
+		var(--jeong-sky-morning) calc(var(--jeong-morning) * 0.68),
+		var(--jeong-sky-noon) calc(var(--jeong-morning) * 0.86),
+		var(--jeong-sky-noon) calc(var(--jeong-axis) + var(--jeong-night) * 0.12),
+		var(--jeong-sky-afternoon) calc(var(--jeong-axis) + var(--jeong-night) * 0.3),
+		var(--jeong-sky-sunset) calc(var(--jeong-axis) + var(--jeong-night) * 0.5),
+		var(--jeong-sky-dusk) calc(var(--jeong-axis) + var(--jeong-night) * 0.7),
+		var(--jeong-sky-night) calc(var(--jeong-axis) + var(--jeong-night) * 0.88),
 		var(--jeong-sky-night) 100%
 	);
 }
@@ -1508,22 +1548,22 @@ body {
 	inset: 0 calc(-1 * var(--jeong-space-2xs)) 0 0;
 }
 
-/* Which part of the day is in view: a soft capsule around the ruler, like light through a gap */
+/* Which part of the day is in view: a soft capsule around the ruler; out in deep space, a bead in the ink */
 .jeong-timeline-sky-here {
 	position: absolute;
-	left: -0.125rem;
-	right: -0.125rem;
-	min-height: 0.375rem;
+	left: 0;
+	right: 0;
 	box-sizing: border-box;
 	border-radius: 999rem;
-	border: 1px solid color-mix(in srgb, var(--jeong-hanji) 75%, transparent);
-	box-shadow: 0 0 0.375rem color-mix(in srgb, var(--jeong-hanji) 35%, transparent), inset 0 0 0.25rem color-mix(in srgb, var(--jeong-hanji) 30%, transparent);
+	/* in the ink of the theme, so it shows on a pale day and in deep space alike */
+	border: 1px solid color-mix(in srgb, var(--jeong-ink) 70%, transparent);
+	box-shadow: 0 0 0.375rem color-mix(in srgb, var(--jeong-ink) 30%, transparent);
 	pointer-events: none;
 }
 
 /*
- * Stars at night: only past the day's edge, faint at first and all out in deep night, above it or below it;
- * the twinkling ones only out there. Each layer covers just its own stretch of the page (masks are in its own
+ * Stars at night: still ones after sunset, as always, and in deep space above or below a busy day; the
+ * twinkling ones only out in deep space. Each layer covers just its own stretch of the page (masks are in its own
  * coordinates), so the day in between has no star layers at all, and a day that never reaches up into the
  * night has none above it.
  */
@@ -1536,13 +1576,15 @@ body {
 }
 
 .jeong-timeline-stars.is-below {
-	top: var(--jeong-day-end);
+	--jeong-stars-from: calc(var(--jeong-axis) + var(--jeong-night) * 0.55);
+	top: var(--jeong-stars-from);
 	bottom: 0;
-	mask-image: linear-gradient(transparent 0, rgba(0, 0, 0, 0.3) calc(var(--jeong-night) * 0.6), #000 calc(var(--jeong-night) * 1.2));
+	/* out after sunset (about 7 PM), all out by night */
+	mask-image: linear-gradient(transparent 0, #000 calc(var(--jeong-night) * 0.33));
 }
 
 .jeong-timeline-stars.is-below .jeong-timeline-twinkle {
-	mask-image: linear-gradient(transparent calc(var(--jeong-night) * 0.6), #000 calc(var(--jeong-night) * 1.6));
+	mask-image: linear-gradient(transparent calc(var(--jeong-night) * 0.45), #000 calc(var(--jeong-night) * 1.6));
 }
 
 .jeong-timeline-stars.is-above {

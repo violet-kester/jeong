@@ -30,6 +30,10 @@ const MAX_ZOOM = 12;
 const ZOOM_EASE = 0.28;
 /** How far one wheel notch zooms at most, so a mouse wheel steps as gently as a trackpad pinch. */
 const WHEEL_STEP = 40;
+/** How tall the ink of deep space is at each end of the sky ruler, in pixels. */
+const SKY_CAP = 22;
+/** The smallest the marker gets: a bead, out in deep space. */
+const SKY_BEAD = 8;
 /** How wide a day is at least, in month, week, and day views, in card widths, so cards have room to stand side by side. */
 const DAY_WIDTH: Record<Scale, number> = { year: 0, month: 0.4, week: 1.2, day: 12 };
 /** Zooming in brings the cards closer as fast as it stretches time, up to max; zooming out never shrinks them. */
@@ -123,6 +127,8 @@ export class TimelineView extends ItemView {
 		// Jeong's colors on the whole tab, so the paper runs up through Obsidian's header strip too
 		this.containerEl.addClass('jeong');
 		setNightSky(root);
+		// The sky behind everything, on its own layer: some themes (Border) make every view's background see-through
+		this.backdrop = root.createDiv({ cls: 'jeong-timeline-backdrop' });
 
 		const bar = (this.bar = root.createDiv({ cls: 'jeong-timeline-bar' }));
 		// Two soft pills. The first picks what to look at: a kind of period on one side (Year, Month, Week, Day),
@@ -162,13 +168,18 @@ export class TimelineView extends ItemView {
 		today.addEventListener('click', () => this.goToToday());
 
 		this.scroller = root.createDiv({ cls: 'jeong-timeline-scroller' });
-		this.track = this.scroller.createDiv({ cls: 'jeong-timeline-track' });
-		// The whole day down the left edge, with where you are in it; a click goes to that time of day
-		const sky = root.createDiv({ cls: 'jeong-timeline-sky', attr: { role: 'button', 'aria-label': t('timeline.timeOfDay') } });
+		// The frosted glass under the header and bar
+		this.glass = root.createDiv({ cls: 'jeong-timeline-glass' });
+		this.track = this.scroller.createDiv({ cls: 'jeong-timeline-track jeong-sky' });
+		// The sky ruler down the left edge: the day, midnight to midnight, in the sky's colors where the page changes,
+		// with deep space in ink at either end, and a marker on the part in view; a click goes to that time of day
+		const sky = (this.sky = root.createDiv({ cls: 'jeong-timeline-sky', attr: { role: 'button', 'aria-label': t('timeline.timeOfDay') } }));
+		sky.setCssProps({ '--jeong-sky-cap': `${SKY_CAP}px` });
+		this.skyMap = sky.createDiv({ cls: 'jeong-timeline-sky-map' }).createDiv({ cls: 'jeong-timeline-sky-day' });
 		this.skyHere = sky.createDiv({ cls: 'jeong-timeline-sky-here' });
 		sky.addEventListener('click', (e) => {
-			const box = sky.getBoundingClientRect();
-			this.goToTimeOfDay((e.clientY - box.top) / box.height);
+			const y = this.pageAt(e.clientY - sky.getBoundingClientRect().top);
+			this.scroller.scrollTo({ top: Math.max(0, y - this.scroller.clientHeight / 2), behavior: 'smooth' });
 		});
 		// Recording a new entry is always one big, clear button away
 		const record = root.createEl('button', { cls: 'jeong-timeline-record', attr: { 'aria-label': t('ribbon.record') } });
@@ -535,7 +546,8 @@ export class TimelineView extends ItemView {
 		const axisY = Math.max(restAxis, clear + this.layout.stem + reach(above));
 		this.axisY = axisY;
 		this.axis.style.top = `${axisY}px`;
-		this.track.setCssProps({ '--jeong-axis': `${axisY}px`, '--jeong-morning': `${restAxis}px`, '--jeong-night': `${height - restAxis}px` });
+		// On the view, so the page and the sky ruler's map of it paint the same sky
+		this.contentEl.setCssProps({ '--jeong-axis': `${axisY}px`, '--jeong-morning': `${restAxis}px`, '--jeong-night': `${height - restAxis}px` });
 		this.day = { top: axisY - restAxis, bottom: axisY + height - restAxis, morning: restAxis, night: height - restAxis };
 
 		for (const [stacked, isAbove] of [...above.map((c) => [c, true] as const), ...below.map((c) => [c, false] as const)]) {
@@ -559,7 +571,13 @@ export class TimelineView extends ItemView {
 		}
 
 		// Tall enough for the lowest card, with room under it for the Record button (and, on phones, Obsidian's toolbar)
-		this.track.style.height = `${Math.max(height, axisY + this.layout.stem + reach(below) + (Platform.isMobile ? 200 : 96))}px`;
+		const trackHeight = Math.max(height, axisY + this.layout.stem + reach(below) + (Platform.isMobile ? 200 : 96));
+		this.track.style.height = `${trackHeight}px`;
+		// The ruler's day is the page's day at rest, midnight to midnight, laid out at full size and squeezed to fit
+		const dayHeight = height;
+		this.skyMap.setCssProps({ '--jeong-axis': `${restAxis}px`, '--jeong-morning': `${restAxis}px`, '--jeong-night': `${height - restAxis}px` });
+		this.skyMap.style.height = `${dayHeight}px`;
+		this.skyMap.style.transform = `scaleY(${(this.sky.clientHeight - SKY_CAP * 2) / dayHeight})`;
 		this.markNight();
 	}
 
@@ -569,38 +587,55 @@ export class TimelineView extends ItemView {
 	 */
 	private markNight = (): void => {
 		const { top, bottom, morning, night } = this.day;
-		// as deep as the night is there (styles.css: full a morning and a half above the day, a night and a half below it)
+		// as deep as the night is there (styles.css: deep space is full a morning and a half above the day, a night and a half below it)
 		const deep = (y: number) => Math.min(1, Math.max(0, (top - y) / (morning * 1.5), (y - bottom) / (night * 1.5)));
 		const scrolled = this.scroller.scrollTop;
 		this.track.toggleClass('is-dates-at-night', deep(scrolled + this.top + NUMERALS_HEIGHT / 2) > 0.25);
-		// On the view itself, not as a variable its whole tree would inherit, and only when it changes: this runs
+		// On the backdrop alone, not as a variable the view's whole tree would inherit, and only when it changes: this runs
 		// on every scroll, and restyling everything under it each time made dragging stutter
-		// The sky ruler's marker spans the part of the day in view
-		const from = this.dayFraction(scrolled + this.top);
-		const to = this.dayFraction(scrolled + this.scroller.clientHeight);
-		this.skyHere.style.top = `${(from * 100).toFixed(2)}%`;
-		this.skyHere.style.height = `${((to - from) * 100).toFixed(2)}%`;
+		// The sky ruler's marker spans the part of the day in view; out in deep space it rests in the ink as a bead
+		const from = this.rulerAt(scrolled + this.top);
+		const to = this.rulerAt(scrolled + this.scroller.clientHeight);
+		const height = Math.max(SKY_BEAD, to - from);
+		const at = Math.min(this.sky.clientHeight - height, Math.max(0, (from + to) / 2 - height / 2));
+		this.skyHere.style.top = `${at.toFixed(1)}px`;
+		this.skyHere.style.height = `${height.toFixed(1)}px`;
 		const behind = Math.round(deep(scrolled + this.top / 2) * 100);
 		if (behind === this.nightBehind) return;
 		this.nightBehind = behind;
-		this.contentEl.style.backgroundColor = behind ? `color-mix(in srgb, var(--jeong-deep-night) ${behind}%, var(--jeong-page-dusk))` : '';
+		this.backdrop.style.backgroundColor = behind ? `color-mix(in srgb, var(--jeong-deep-night) ${behind}%, var(--jeong-day-midnight))` : '';
+		// and the glass under the header with it (it has no children, so setting these restyles nothing else)
+		this.glass.setCssProps({
+			'--jeong-glass-sky': behind ? `color-mix(in srgb, var(--jeong-deep-night) ${behind}%, var(--jeong-sky-night))` : '',
+			'--jeong-glass-top': behind ? `color-mix(in srgb, var(--jeong-deep-night) ${behind}%, var(--jeong-day-midnight))` : '',
+		});
 	};
+	private glass!: HTMLElement;
+	private backdrop!: HTMLElement;
 	private nightBehind = 0;
+	private sky!: HTMLElement;
+	private skyMap!: HTMLElement;
 	private skyHere!: HTMLElement;
 
-	/** Where a point on the page falls in the day: 0 at midnight above, 0.5 at noon on the line, 1 at midnight below. */
-	private dayFraction(y: number): number {
-		const { top, bottom } = this.day;
-		const f = y < this.axisY ? 0.5 * ((y - top) / (this.axisY - top)) : 0.5 + 0.5 * ((y - this.axisY) / (bottom - this.axisY));
-		return Math.min(1, Math.max(0, f));
+	/**
+	 * Where a point on the page falls on the sky ruler, in pixels from its top: in the day between the ink at
+	 * either end, or, out in deep space, in the ink, as far as the deep space has gone (full once it's at its darkest).
+	 */
+	private rulerAt(y: number): number {
+		const { top, bottom, morning, night } = this.day;
+		const day = this.sky.clientHeight - SKY_CAP * 2;
+		if (y < top) return SKY_CAP * (1 - Math.min(1, (top - y) / (morning * 1.5)));
+		if (y > bottom) return SKY_CAP + day + SKY_CAP * Math.min(1, (y - bottom) / (night * 1.5));
+		return SKY_CAP + (day * (y - top)) / Math.max(1, bottom - top);
 	}
 
-	/** Scrolls so a time of day (0 to 1, midnight to midnight, as on the sky ruler) is in the middle of the view. */
-	private goToTimeOfDay(f: number): void {
-		const { top, bottom } = this.day;
-		const y = f < 0.5 ? top + (this.axisY - top) * (f / 0.5) : this.axisY + (bottom - this.axisY) * ((f - 0.5) / 0.5);
-		const visible = this.scroller.clientHeight - this.top;
-		this.scroller.scrollTo({ top: Math.max(0, y - this.top - visible / 2), behavior: 'smooth' });
+	/** The point on the page at a point on the sky ruler (pixels from its top): rulerAt() backwards. */
+	private pageAt(at: number): number {
+		const { top, bottom, morning, night } = this.day;
+		const day = this.sky.clientHeight - SKY_CAP * 2;
+		if (at < SKY_CAP) return top - (1 - at / SKY_CAP) * morning * 1.5;
+		if (at > SKY_CAP + day) return bottom + ((at - SKY_CAP - day) / SKY_CAP) * night * 1.5;
+		return top + ((at - SKY_CAP) / Math.max(1, day)) * (bottom - top);
 	}
 
 	/** How much bigger or smaller cards are drawn at this zoom. */
