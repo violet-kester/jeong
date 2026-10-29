@@ -71,6 +71,7 @@ Jeong is local first. Out of the box, it runs entirely on your own computer with
     - Install the [ComfyUI](https://www.comfy.org) image generator.
     - Install the [FLUX.2 klein](https://huggingface.co/black-forest-labs) image model in ComfyUI.
     - This needs a graphics card with about 8 GB of memory on a computer rather than a phone.
+    - To have Jeong start ComfyUI only when it paints, and stop it after five quiet minutes, put the command that starts ComfyUI under **Settings → Jeong → Start ComfyUI with**.
     - Without these, your entries will not be illustrated.
 
 We recommend installing these. If you'd rather not, you can bring your own API key instead under **Settings → Jeong**:

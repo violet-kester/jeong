@@ -31,6 +31,7 @@ declare global {
 		createEl<K extends keyof HTMLElementTagNameMap>(tag: K, info?: ElementInfo | string, callback?: (el: HTMLElementTagNameMap[K]) => void): HTMLElementTagNameMap[K];
 		createDiv(info?: ElementInfo | string, callback?: (el: HTMLDivElement) => void): HTMLDivElement;
 		createSpan(info?: ElementInfo | string, callback?: (el: HTMLSpanElement) => void): HTMLSpanElement;
+		createSvg<K extends keyof SVGElementTagNameMap>(tag: K, info?: ElementInfo | string): SVGElementTagNameMap[K];
 		empty(): void;
 	}
 	interface Element {
@@ -59,6 +60,13 @@ Node.prototype.createDiv = function (this: Node, info?: ElementInfo | string, ca
 };
 Node.prototype.createSpan = function (this: Node, info?: ElementInfo | string, callback?: (el: HTMLSpanElement) => void) {
 	return this.createEl('span', info, callback);
+};
+Node.prototype.createSvg = function <K extends keyof SVGElementTagNameMap>(this: Node, tag: K, info?: ElementInfo | string) {
+	const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+	const options = typeof info === 'string' ? { cls: info } : (info ?? {});
+	if (options.cls) el.setAttribute('class', Array.isArray(options.cls) ? options.cls.join(' ') : options.cls);
+	for (const [name, value] of Object.entries(options.attr ?? {})) if (value !== null && value !== false) el.setAttribute(name, String(value));
+	return this.appendChild(el);
 };
 Node.prototype.empty = function (this: Node) {
 	while (this.firstChild) this.removeChild(this.firstChild);

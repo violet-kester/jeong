@@ -4,6 +4,7 @@ import type { Metrics } from '../metrics/metrics';
 import { freeName } from '../journal/entry-writer';
 import { CloudImages } from './cloud-images';
 import { ComfyUI, type Workflow } from './comfyui';
+import { ComfyLauncher } from './comfy-launcher';
 import { kleinWorkflow } from './klein-workflow';
 import { storyText } from '../journal/story-text';
 
@@ -76,15 +77,17 @@ const ARTWORK =
 	"Fill the space with carved texture drawn from the subject's own world (its surfaces, weather, light, movement), not generic swirls. " +
 	'Paint only what the subject mentions: no added scenery, windows, rooms, landscapes or objects.';
 
-/** How long ComfyUI keeps its models after the last painting. */
+/** How long ComfyUI keeps its models (or, if Jeong started it, keeps running) after the last painting. */
 const FREE_AFTER_MS = 5 * 60 * 1000;
 
-export type PaintProgress = 'scene' | 'painting' | 'not-ready' | 'done' | 'failed';
+export type PaintProgress = 'starting' | 'scene' | 'painting' | 'not-ready' | 'done' | 'failed';
 
 export interface PaintSettings {
 	/** ComfyUI on this computer, or OpenAI's or xAI's image API with the person's own key. */
 	paintProvider: 'comfyui' | 'openai' | 'xai';
 	comfyUrl: string;
+	/** On a computer, the command that starts ComfyUI when a painting needs it; '' to start it yourself. */
+	comfyCommand: string;
 	/** Names of API keys in Obsidian's keychain. */
 	openaiKey: string;
 	xaiKey: string;
@@ -97,6 +100,7 @@ export interface PaintSettings {
 
 export class Painter {
 	private comfy: ComfyUI;
+	private launcher: ComfyLauncher;
 	private cloud: CloudImages;
 	private busy = new Set<string>();
 	/** Entries whose painting just finished and hasn't been shown yet, so the timeline can brush it on. */
@@ -112,6 +116,7 @@ export class Painter {
 		secret: (id: string) => string,
 	) {
 		this.comfy = new ComfyUI(() => this.settings().comfyUrl);
+		this.launcher = new ComfyLauncher(() => this.settings().comfyCommand, () => this.comfy.isReady());
 		const cloud = () => (this.settings().paintProvider === 'xai' ? 'xai' : 'openai');
 		this.cloud = new CloudImages(
 			cloud,
@@ -143,12 +148,15 @@ export class Painter {
 	/** Paints a picture for the entry, replacing any earlier painting. */
 	async paint(note: TFile, onProgress: (progress: PaintProgress) => void = () => {}): Promise<boolean> {
 		if (this.busy.has(note.path)) return false;
-		if (!(this.local ? await this.comfy.isReady() : this.cloud.isReady())) {
-			onProgress('not-ready');
-			return false;
-		}
 		this.busy.add(note.path);
 		this.changed();
+		window.clearTimeout(this.freeTimer);
+		if (!(await this.ready(onProgress))) {
+			onProgress('not-ready');
+			this.busy.delete(note.path);
+			this.changed();
+			return false;
+		}
 		// Where the time goes, so a slow painting can be traced to the scene, the painter, or the swap between them
 		const started = performance.now();
 		let mark = started;
@@ -201,21 +209,33 @@ export class Painter {
 		}
 	}
 
+	/** True when the painter can paint: the cloud key is there, or ComfyUI is running (started now if need be). */
+	private async ready(onProgress: (progress: PaintProgress) => void): Promise<boolean> {
+		if (!this.local) return this.cloud.isReady();
+		if (await this.comfy.isReady()) return true;
+		if (!this.launcher.canStart) return false;
+		onProgress('starting');
+		return this.launcher.start();
+	}
+
 	/**
 	 * Lets ComfyUI free its models once nothing has been painted for a while, like Ollama does, so they don't
-	 * hold the computer's memory for hours. The next painting loads them again (10 to 20 seconds).
+	 * hold the computer's memory for hours; ComfyUI that Jeong started stops altogether. The next painting
+	 * loads them again (10 to 20 seconds), or starts ComfyUI again.
 	 */
 	private freeWhenIdle(): void {
 		window.clearTimeout(this.freeTimer);
 		if (!this.local) return;
 		this.freeTimer = window.setTimeout(() => {
-			if (!this.busy.size) void this.comfy.free();
+			if (this.busy.size) return;
+			void this.comfy.free().then(() => this.launcher.stop());
 		}, FREE_AFTER_MS);
 	}
 
-	/** Stops waiting to free ComfyUI's models, when Jeong closes. */
+	/** Stops waiting to free ComfyUI's models, and stops ComfyUI if Jeong started it, when Jeong closes. */
 	dispose(): void {
 		window.clearTimeout(this.freeTimer);
+		this.launcher.stop();
 	}
 
 	private changed(): void {

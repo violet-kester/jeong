@@ -15,12 +15,6 @@
 	--jeong-ink: var(--jeong-meok);
 	--jeong-text-muted: #7E786F;
 
-	/* The timeline's day: walnut ink (see ../styles/colors.css) */
-	--jeong-day-morning: #F7EEDC;
-	--jeong-day-noon: #ECDDC2;
-	--jeong-day-night: #A98A66;
-	--jeong-day-sunset: rgba(201, 103, 63, 0.14);
-	--jeong-day-dusk: rgba(42, 48, 72, 0.24);
 	--jeong-card: #FBF6EC; /* solid paper, so lines pass behind cards, not through them */
 	--jeong-hairline: rgba(42, 39, 36, 0.22);
 	--jeong-entry-bg: #F7F2E8;
@@ -34,6 +28,17 @@
 	--jeong-sky-sunset: #C9673F;
 	--jeong-sky-dusk: #5A5A78;
 	--jeong-sky-night: #2A3048;
+	/* The timeline page, from noon at the line outward: each step darker than the last (see .jeong-timeline-track) */
+	--jeong-page-noon: #F6E9CA;
+	--jeong-page-glow: #F1E3C6;
+	--jeong-page-walnut: #ECDDC2;
+	--jeong-page-gold: #C8AB85;
+	--jeong-page-coral: #C08D69;
+	--jeong-page-red: #B18766;
+	--jeong-page-violet: #8B796F;
+	--jeong-page-dusk: #857367;
+	--jeong-page-night: #836F5D;
+	--jeong-deep-night: #22263A; /* past either end of a busy day */
 	--jeong-stars: var(--jeong-stars-light);
 	--jeong-stars-1: var(--jeong-stars-light-1);
 	--jeong-stars-2: var(--jeong-stars-light-2);
@@ -45,11 +50,6 @@ body.jeong-theme-dark .jeong {
 	--jeong-ink: #EEE5D3;
 	--jeong-text-muted: #A69C8D;
 
-	--jeong-day-morning: #433526;
-	--jeong-day-noon: #2C231A;
-	--jeong-day-night: #0E0C0A;
-	--jeong-day-sunset: rgba(162, 78, 51, 0.14);
-	--jeong-day-dusk: rgba(40, 46, 74, 0.5);
 	--jeong-card: #29231D;
 	--jeong-hairline: rgba(238, 229, 211, 0.22);
 	--jeong-entry-bg: #24201C;
@@ -63,15 +63,20 @@ body.jeong-theme-dark .jeong {
 	--jeong-sky-sunset: #A24E33;
 	--jeong-sky-dusk: #434662;
 	--jeong-sky-night: #1E2234;
+	--jeong-page-noon: #7A6849;
+	--jeong-page-glow: #534632;
+	--jeong-page-walnut: #2C231A;
+	--jeong-page-gold: #2B2218;
+	--jeong-page-coral: #2E1C17;
+	--jeong-page-red: #2F1A14;
+	--jeong-page-violet: #1D1D26;
+	--jeong-page-dusk: #1D1D24;
+	--jeong-page-night: #131317;
+	--jeong-deep-night: #0B0C12;
 	--jeong-stars: var(--jeong-stars-dark);
 	--jeong-stars-1: var(--jeong-stars-dark-1);
 	--jeong-stars-2: var(--jeong-stars-dark-2);
 	--jeong-stars-3: var(--jeong-stars-dark-3);
-}
-
-/* Midnight at the top of the timeline's day: its night, a little lifted. After the theme colors, so it follows them */
-.jeong {
-	--jeong-day-midnight: color-mix(in srgb, var(--jeong-day-night) 55%, var(--jeong-day-noon));
 }
 
 /* The Theme setting: Jeong's own paper or ink, whichever theme Obsidian uses.
@@ -1047,8 +1052,10 @@ body {
 	padding: 0 !important;
 	overflow: hidden;
 	position: relative;
-	/* midnight, like the top of the sky, so nothing lighter shows where the timeline fades under the header */
-	background: var(--jeong-day-midnight);
+	/* past either end of a busy day, darker than the day's own night in either theme */
+	/* the day's edge, like the top of the page at rest, so nothing lighter shows where the timeline fades under
+	   the header; deepening with the night when a busy day's cards reach up into it (the timeline sets that) */
+	background: var(--jeong-page-dusk);
 }
 
 /* Full bleed: the timeline runs right up under the header and bar, which float over it on frosted glass.
@@ -1063,7 +1070,7 @@ body {
 	height: calc(var(--jeong-timeline-top, 0rem) + var(--jeong-space-l));
 	z-index: 5;
 	pointer-events: none;
-	background: linear-gradient(color-mix(in srgb, var(--jeong-sky-night) 16%, transparent), color-mix(in srgb, var(--jeong-day-midnight) 55%, transparent) 70%, transparent);
+	background: linear-gradient(color-mix(in srgb, var(--jeong-sky-night) 16%, transparent), color-mix(in srgb, var(--jeong-page-dusk) 55%, transparent) 70%, transparent);
 	-webkit-backdrop-filter: blur(0.375rem);
 	backdrop-filter: blur(0.375rem);
 	mask-image: linear-gradient(#000 40%, transparent);
@@ -1297,28 +1304,47 @@ body {
 	/* dragging pans the year; it never selects the numerals or card text */
 	user-select: none;
 	/* whatever scrolls up under the header and bar fades away slowly, over a long, soft stretch, so nothing
-	   is cut off at an edge; the sky ruler (the first 6px) stays clear all the way up */
-	mask-image: linear-gradient(#000, #000) left / 0.375rem 100% no-repeat,
-		linear-gradient(transparent, rgba(0, 0, 0, 0.2) calc(var(--jeong-timeline-top, 0rem) - 1.5rem), #000 calc(var(--jeong-timeline-top, 0rem) + 4.5rem));
+	   is cut off at an edge */
+	mask-image: linear-gradient(transparent, rgba(0, 0, 0, 0.2) calc(var(--jeong-timeline-top, 0rem) - 1.5rem), #000 calc(var(--jeong-timeline-top, 0rem) + 4.5rem));
 }
 
+/*
+ * One day fills the view at rest, brightest at the line and darker with every step away from it, up or down:
+ * noon's glow, walnut, then a short golden, coral and red sunset (sunrise above), violet dusk by the day's
+ * edge (midnight), night, and deep night past it. The timeline sets how tall that day is (--jeong-morning
+ * above the line, --jeong-night below it), so at rest only the day shows; deep night appears only where a
+ * busy day's cards reach past it. The colors are the --jeong-page-* tokens at the top of this file.
+ */
 .jeong-timeline-track {
 	--jeong-axis: 56%;
-	--jeong-night: calc(100% - var(--jeong-axis)); /* from the line to the bottom */
+	--jeong-morning: var(--jeong-axis); /* from the top of the day to the line */
+	--jeong-night: calc(100% - var(--jeong-axis)); /* from the line to the bottom of the day */
+	--jeong-dawn: calc(var(--jeong-axis) - var(--jeong-morning)); /* where the day starts: the top, unless cards push the line down */
+	--jeong-day-end: calc(var(--jeong-axis) + var(--jeong-night));
 	position: relative;
 	height: 100%;
 	min-height: 20rem;
-	background:
-		/* the sky lightly echoed: a sunset band below the line, then indigo settling at the bottom */
-		linear-gradient(transparent calc(var(--jeong-axis) + var(--jeong-night) * 0.14), var(--jeong-day-sunset) calc(var(--jeong-axis) + var(--jeong-night) * 0.5), var(--jeong-day-dusk) 100%),
-		/* one day around the line: dark at midnight above and below, lighter by 6 AM and 6 PM, brightest at noon */
-		linear-gradient(
-			var(--jeong-day-midnight) 0,
-			var(--jeong-day-noon) calc(var(--jeong-axis) * 0.5),
-			color-mix(in srgb, var(--jeong-day-morning) 85%, var(--jeong-sky-noon)) var(--jeong-axis),
-			var(--jeong-day-noon) calc(var(--jeong-axis) + var(--jeong-night) * 0.5),
-			var(--jeong-day-night) 100%
-		);
+	background: linear-gradient(
+		var(--jeong-deep-night) calc(var(--jeong-axis) - var(--jeong-morning) * 2.5),
+		var(--jeong-page-night) calc(var(--jeong-axis) - var(--jeong-morning) * 1.35),
+		var(--jeong-page-dusk) calc(var(--jeong-axis) - var(--jeong-morning)),
+		var(--jeong-page-violet) calc(var(--jeong-axis) - var(--jeong-morning) * 0.87),
+		var(--jeong-page-red) calc(var(--jeong-axis) - var(--jeong-morning) * 0.75),
+		var(--jeong-page-coral) calc(var(--jeong-axis) - var(--jeong-morning) * 0.66),
+		var(--jeong-page-gold) calc(var(--jeong-axis) - var(--jeong-morning) * 0.55),
+		var(--jeong-page-walnut) calc(var(--jeong-axis) - var(--jeong-morning) * 0.45),
+		var(--jeong-page-glow) calc(var(--jeong-axis) - var(--jeong-morning) * 0.12),
+		var(--jeong-page-noon) var(--jeong-axis),
+		var(--jeong-page-glow) calc(var(--jeong-axis) + var(--jeong-night) * 0.12),
+		var(--jeong-page-walnut) calc(var(--jeong-axis) + var(--jeong-night) * 0.45),
+		var(--jeong-page-gold) calc(var(--jeong-axis) + var(--jeong-night) * 0.55),
+		var(--jeong-page-coral) calc(var(--jeong-axis) + var(--jeong-night) * 0.66),
+		var(--jeong-page-red) calc(var(--jeong-axis) + var(--jeong-night) * 0.75),
+		var(--jeong-page-violet) calc(var(--jeong-axis) + var(--jeong-night) * 0.87),
+		var(--jeong-page-dusk) var(--jeong-day-end),
+		var(--jeong-page-night) calc(var(--jeong-axis) + var(--jeong-night) * 1.35),
+		var(--jeong-deep-night) calc(var(--jeong-axis) + var(--jeong-night) * 2.5)
+	);
 }
 
 /* Obsidian's header strip (back, forward, title) floats see-through over the timeline too */
@@ -1445,44 +1471,94 @@ body {
 	bottom: calc(env(safe-area-inset-bottom, 0rem) + var(--jeong-space-3xl));
 }
 
-/* The sky ruler: the whole day in a strip at the left edge, staying put while the year scrolls by */
+/*
+ * The sky ruler: the whole day, midnight to noon to midnight, in a strip down the left edge of the view. It
+ * stays put while the page scrolls; a soft marker on it shows which part of the day is in view, and a click
+ * anywhere on it goes to that time of day.
+ */
 .jeong-timeline-sky {
-	position: sticky;
+	position: absolute;
+	top: 0;
+	bottom: 0;
 	left: 0;
 	width: var(--jeong-space-2xs);
-	height: 100%;
-	z-index: 3;
-}
-
-.jeong-timeline-sky {
-	/* one whole day, brightest at the line: midnight, dawn, morning, noon at the line, afternoon, sunset, dusk, midnight */
+	z-index: 5;
+	cursor: pointer;
+	/* midnight, dawn, morning, noon in the middle, afternoon, sunset, dusk, midnight */
 	background: linear-gradient(
-		var(--jeong-sky-night) 0,
-		var(--jeong-sky-night) calc(var(--jeong-axis) * 0.12),
-		var(--jeong-sky-dusk) calc(var(--jeong-axis) * 0.3),
-		var(--jeong-sky-dawn) calc(var(--jeong-axis) * 0.5),
-		var(--jeong-sky-morning) calc(var(--jeong-axis) * 0.68),
-		var(--jeong-sky-noon) calc(var(--jeong-axis) * 0.86),
-		var(--jeong-sky-noon) calc(var(--jeong-axis) + var(--jeong-night) * 0.12),
-		var(--jeong-sky-afternoon) calc(var(--jeong-axis) + var(--jeong-night) * 0.3),
-		var(--jeong-sky-sunset) calc(var(--jeong-axis) + var(--jeong-night) * 0.5),
-		var(--jeong-sky-dusk) calc(var(--jeong-axis) + var(--jeong-night) * 0.7),
-		var(--jeong-sky-night) calc(var(--jeong-axis) + var(--jeong-night) * 0.88),
+		var(--jeong-sky-night) 0%,
+		var(--jeong-sky-night) 6%,
+		var(--jeong-sky-dusk) 15%,
+		var(--jeong-sky-dawn) 25%,
+		var(--jeong-sky-morning) 34%,
+		var(--jeong-sky-noon) 43%,
+		var(--jeong-sky-noon) 56%,
+		var(--jeong-sky-afternoon) 65%,
+		var(--jeong-sky-sunset) 75%,
+		var(--jeong-sky-dusk) 85%,
+		var(--jeong-sky-night) 94%,
 		var(--jeong-sky-night) 100%
 	);
 }
 
-/* Stars at night. At the bottom they come out after sunset (about 7 PM) and are all out by night. */
+/* A wider strip to click on than the ruler itself */
+.jeong-timeline-sky::after {
+	content: "";
+	position: absolute;
+	inset: 0 calc(-1 * var(--jeong-space-2xs)) 0 0;
+}
+
+/* Which part of the day is in view: a soft capsule around the ruler, like light through a gap */
+.jeong-timeline-sky-here {
+	position: absolute;
+	left: -0.125rem;
+	right: -0.125rem;
+	min-height: 0.375rem;
+	box-sizing: border-box;
+	border-radius: 999rem;
+	border: 1px solid color-mix(in srgb, var(--jeong-hanji) 75%, transparent);
+	box-shadow: 0 0 0.375rem color-mix(in srgb, var(--jeong-hanji) 35%, transparent), inset 0 0 0.25rem color-mix(in srgb, var(--jeong-hanji) 30%, transparent);
+	pointer-events: none;
+}
+
+/*
+ * Stars at night: only past the day's edge, faint at first and all out in deep night, above it or below it;
+ * the twinkling ones only out there. Each layer covers just its own stretch of the page (masks are in its own
+ * coordinates), so the day in between has no star layers at all, and a day that never reaches up into the
+ * night has none above it.
+ */
 .jeong-timeline-stars {
 	position: absolute;
-	inset: 0;
+	left: 0;
+	right: 0;
 	pointer-events: none;
 	background-image: var(--jeong-stars);
-	mask-image: linear-gradient(transparent calc(var(--jeong-axis) + var(--jeong-night) * 0.55), #000 calc(var(--jeong-axis) + var(--jeong-night) * 0.88));
+}
+
+.jeong-timeline-stars.is-below {
+	top: var(--jeong-day-end);
+	bottom: 0;
+	mask-image: linear-gradient(transparent 0, rgba(0, 0, 0, 0.3) calc(var(--jeong-night) * 0.6), #000 calc(var(--jeong-night) * 1.2));
+}
+
+.jeong-timeline-stars.is-below .jeong-timeline-twinkle {
+	mask-image: linear-gradient(transparent calc(var(--jeong-night) * 0.6), #000 calc(var(--jeong-night) * 1.6));
+}
+
+.jeong-timeline-stars.is-above {
+	top: 0;
+	height: var(--jeong-dawn);
+	mask-image: linear-gradient(#000 calc(var(--jeong-dawn) - var(--jeong-morning) * 1.2), rgba(0, 0, 0, 0.3) calc(var(--jeong-dawn) - var(--jeong-morning) * 0.6), transparent 100%);
+}
+
+.jeong-timeline-stars.is-above .jeong-timeline-twinkle {
+	mask-image: linear-gradient(#000 calc(var(--jeong-dawn) - var(--jeong-morning) * 1.6), transparent calc(var(--jeong-dawn) - var(--jeong-morning) * 0.6));
 }
 
 /* At the top, fainter ones over the blur under the dates (behind it they'd blur away), fading out below it */
 .jeong-timeline-stars.is-top {
+	top: 0;
+	height: calc(var(--jeong-veil, 10rem) + var(--jeong-space-3xl) * 2.5);
 	z-index: 3;
 	mask-image: linear-gradient(rgba(0, 0, 0, 0.7) 0, rgba(0, 0, 0, 0.7) var(--jeong-veil, 10rem), transparent calc(var(--jeong-veil, 10rem) + var(--jeong-space-3xl) * 2.5));
 }
@@ -1613,6 +1689,46 @@ body {
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--jeong-text-muted);
+}
+
+/* Over the deep night past either end of a busy day, the dates are written in light ink */
+.jeong-timeline-track.is-dates-at-night .jeong-timeline-month:not(.is-today) b {
+	color: #F1E8D6;
+}
+
+.jeong-timeline-track.is-dates-at-night .jeong-timeline-month small,
+.jeong-timeline-track.is-dates-at-night .jeong-timeline-moon {
+	color: rgba(241, 232, 214, 0.7);
+}
+
+.jeong-timeline-month-head b,
+.jeong-timeline-month-head small {
+	transition: color 0.6s var(--jeong-ease-in-out);
+}
+
+/* The moon that night, small under the day's name */
+.jeong-timeline-moon {
+	width: 0.85em;
+	height: 0.85em;
+	margin-top: var(--jeong-space-3xs);
+	color: var(--jeong-text-muted);
+}
+
+.jeong-timeline-moon svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.jeong-moon-ring {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 0.6;
+	opacity: 0.55;
+}
+
+.jeong-moon-lit {
+	fill: currentColor;
 }
 
 .jeong-timeline-axis {
@@ -2023,40 +2139,6 @@ body {
 	background: var(--jeong-ink);
 }
 
-.jeong-timeline-more {
-	position: absolute;
-	transform: translate(-50%, var(--jeong-space-xs));
-	padding: 0.125rem var(--jeong-space-2xs);
-	min-height: 0;
-	border-radius: 999rem;
-	border: 1px solid var(--jeong-ink);
-	background: var(--background-primary);
-	box-shadow: none;
-	font-family: var(--jeong-mono);
-	font-size: 0.72em;
-	color: var(--jeong-ink);
-	cursor: pointer;
-	z-index: 2;
-}
-
-.jeong-timeline-list-item {
-	display: grid;
-	justify-items: start;
-	gap: 0.125rem;
-	height: auto;
-	padding: var(--jeong-space-2xs) var(--jeong-space-xs);
-	text-align: left;
-	background: none;
-	box-shadow: none;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 0.375rem;
-	cursor: pointer;
-}
-
-.jeong-timeline-list-item:hover {
-	border-color: var(--jeong-persimmon);
-}
-
 .jeong-timeline-empty {
 	position: absolute;
 	top: 66%;
@@ -2108,10 +2190,6 @@ body {
 
 .jeong-timeline-card .jeong-timeline-entry-meta {
 	color: rgba(241, 232, 214, 0.62);
-}
-
-.jeong-timeline-card .jeong-timeline-list-item {
-	border-color: rgba(241, 232, 214, 0.18);
 }
 
 .jeong-timeline-card-meta {

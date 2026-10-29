@@ -25,6 +25,8 @@ export function storyMessage(progress: StoryProgress): string {
 /** Plain-words status for each step of painting a picture. */
 export function paintMessage(progress: PaintProgress): string {
 	switch (progress) {
+		case 'starting':
+			return t('paint.starting');
 		case 'scene':
 			return t('paint.scene');
 		case 'painting':

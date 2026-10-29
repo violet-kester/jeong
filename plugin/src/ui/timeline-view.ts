@@ -10,21 +10,26 @@ import { brushReveal } from '../paint/brush-reveal';
 import { storyText } from '../journal/story-text';
 import { StoryModal } from './story-modal';
 import { applyInk } from '../paint/ink';
+import { moonPhase } from './moon';
 
 export const TIMELINE_VIEW = 'jeong-timeline';
 
 // A timeline of the journal, a year, a month, a week, or a day at a time, in the style of the printed-chart
 // sketch: huge numerals (months in a year, days in a month or week, hours in a day), entries as small cards
 // standing on one line, and a red line for now. Hover a card for a larger preview; click to open the entry.
-// Drag to move around; pinch, Ctrl + wheel, or the − and + buttons stretch the period out or squeeze it in.
+// Drag to move around; pinch, Ctrl + wheel, or the − and + buttons stretch the period out or squeeze it in,
+// gliding there: zooming only moves what's drawn, it never draws it again.
 // A numeral takes you one step closer: a month to that month, a day to its week, a day in a week to that day.
 
 const NUMERALS_HEIGHT = 170;
 const PHOTO_TURN_MS = 4000; // how long each picture shows before the next one fades in
-const MAX_CARDS_PER_DAY = 8; // more than this on one day fold into "+N"
 const MIN_HEIGHT = 420; // the numerals plus a row of cards above and below the line
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 12;
+/** How much of the way to the zoom asked for each frame covers, so zooming glides there. */
+const ZOOM_EASE = 0.28;
+/** How far one wheel notch zooms at most, so a mouse wheel steps as gently as a trackpad pinch. */
+const WHEEL_STEP = 40;
 /** How wide a day is at least, in month, week, and day views, in card widths, so cards have room to stand side by side. */
 const DAY_WIDTH: Record<Scale, number> = { year: 0, month: 0.4, week: 1.2, day: 12 };
 /** Zooming in brings the cards closer as fast as it stretches time, up to max; zooming out never shrinks them. */
@@ -72,10 +77,23 @@ export class TimelineView extends ItemView {
 	private yearLabel!: HTMLElement;
 	private dragging = { active: false, moved: false, x: 0, y: 0, left: 0, top: 0 };
 	private zoom = 1;
+	/** Where zooming is gliding to, and the point (pixels from the view's left edge) that stays put. */
+	private zoomTarget = 1;
+	private zoomAnchor = 0;
 	private themeButton?: HTMLButtonElement;
 	private layout: Layout = { cardWidth: 220, cardHeight: 92, photoHeight: 132, gap: 10, stem: 18, stemOffset: 14 };
+	/** The layout at card scale 1, measured when the period is drawn; zooming scales it. */
+	private baseLayout: Layout = this.layout;
+	private veilFade = 0;
+	/** What render() drew, for place() to move: the columns, the now line, the line, and the cards. */
+	private columns: { el: HTMLElement; from: number; to: number }[] = [];
+	private nowLine: HTMLElement | null = null;
+	private axis!: HTMLElement;
+	private cards: DrawnCard[] = [];
 	private zoomFrame = 0;
 	private axisY = 0;
+	/** Where the day at rest starts and ends on the track, and how far past each end the night takes to deepen. */
+	private day = { top: 0, bottom: 0, morning: 1, night: 1 };
 	/** Centre on today once the pane has its real size (a new pane can open before it has one). */
 	private pendingToday = true;
 
@@ -137,14 +155,21 @@ export class TimelineView extends ItemView {
 		this.showThemeButton();
 		// Following Obsidian, the button changes when Obsidian's own theme does
 		this.registerEvent(this.app.workspace.on('css-change', () => this.showThemeButton()));
-		zoomOut.addEventListener('click', () => this.setZoom(this.zoom / 1.6));
-		zoomIn.addEventListener('click', () => this.setZoom(this.zoom * 1.6));
+		zoomOut.addEventListener('click', () => this.zoomTo(this.zoomTarget / 1.6));
+		zoomIn.addEventListener('click', () => this.zoomTo(this.zoomTarget * 1.6));
 		earlier.addEventListener('click', () => this.showPeriod(this.start.clone().subtract(1, this.scale)));
 		later.addEventListener('click', () => this.showPeriod(this.start.clone().add(1, this.scale)));
 		today.addEventListener('click', () => this.goToToday());
 
 		this.scroller = root.createDiv({ cls: 'jeong-timeline-scroller' });
 		this.track = this.scroller.createDiv({ cls: 'jeong-timeline-track' });
+		// The whole day down the left edge, with where you are in it; a click goes to that time of day
+		const sky = root.createDiv({ cls: 'jeong-timeline-sky', attr: { role: 'button', 'aria-label': t('timeline.timeOfDay') } });
+		this.skyHere = sky.createDiv({ cls: 'jeong-timeline-sky-here' });
+		sky.addEventListener('click', (e) => {
+			const box = sky.getBoundingClientRect();
+			this.goToTimeOfDay((e.clientY - box.top) / box.height);
+		});
 		// Recording a new entry is always one big, clear button away
 		const record = root.createEl('button', { cls: 'jeong-timeline-record', attr: { 'aria-label': t('ribbon.record') } });
 		setIcon(record.createSpan({ cls: 'jeong-timeline-record-icon' }), 'mic');
@@ -159,6 +184,7 @@ export class TimelineView extends ItemView {
 			if (e.pointerType === 'mouse') this.scheduleHide();
 		});
 		this.enablePanning();
+		this.registerDomEvent(this.scroller, 'scroll', this.markNight, { passive: true });
 		this.cyclePhotos();
 
 		// Redraw when entries change
@@ -222,7 +248,9 @@ export class TimelineView extends ItemView {
 		const showingToday = !now.isBefore(this.start) && now.isBefore(this.end());
 		const middle = at ?? (showingToday ? now : this.dateAt(this.scroller.scrollLeft + this.scroller.clientWidth / 2));
 		this.scale = scale;
-		this.zoom = 1;
+		this.zoom = this.zoomTarget = 1;
+		window.cancelAnimationFrame(this.zoomFrame);
+		this.zoomFrame = 0;
 		this.showPeriod(middle, middle);
 	}
 
@@ -233,8 +261,21 @@ export class TimelineView extends ItemView {
 		const inside = focus && !focus.isBefore(this.start) && focus.isBefore(this.end());
 		const target = inside ? this.x(this.offset(focus)) : 0;
 		this.scroller.scrollLeft = Math.max(0, target - this.scroller.clientWidth / 2);
-		// The line sits a little below the middle, as on a short day, even when busy mornings push it down
-		this.scroller.scrollTop = Math.max(0, this.axisY - this.top - (this.scroller.clientHeight - this.top) * 0.56);
+		// The line sits a little below the middle, as on a short day, even when busy mornings push it down.
+		// On today, the spot where the next entry will stand is in view too: late on a busy day, low down,
+		// under the day's cards, with the night sky below it.
+		const visible = this.scroller.clientHeight - this.top;
+		const line = this.axisY - this.top - visible * 0.56;
+		const next = inside && focus.isSame(moment(), 'day') ? this.nextEntryY() - this.top - visible * 0.75 : 0;
+		this.scroller.scrollTop = Math.max(0, line, next);
+	}
+
+	/** Where an entry recorded now will stand: by the line in the morning; later in the day, under today's cards. */
+	private nextEntryY(): number {
+		if (moment().hour() < 12) return this.axisY;
+		const today = moment().format('YYYY-MM-DD');
+		const bottoms = this.cards.filter((c) => !c.isAbove && c.entry.date === today).map((c) => c.top + c.height + this.layout.gap);
+		return Math.max(this.axisY + this.layout.stem, ...bottoms);
 	}
 
 	/**
@@ -251,16 +292,28 @@ export class TimelineView extends ItemView {
 		this.contentEl.style.setProperty('--jeong-timeline-top', `${this.top}px`);
 	}
 
-	/** Zooms the year in or out, keeping the day under `anchor` (pixels from the view's left edge) in place. */
-	private setZoom(zoom: number, anchor = this.scroller.clientWidth / 2): void {
-		const at = (this.scroller.scrollLeft + anchor) / this.track.clientWidth;
-		this.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
-		window.cancelAnimationFrame(this.zoomFrame);
-		this.zoomFrame = window.requestAnimationFrame(() => {
-			this.render();
-			this.scroller.scrollLeft = at * this.track.clientWidth - anchor;
-		});
+	/** Zooms in or out, gliding there, keeping the moment under `anchor` (pixels from the view's left edge) in place. */
+	private zoomTo(zoom: number, anchor = this.scroller.clientWidth / 2): void {
+		this.zoomTarget = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+		this.zoomAnchor = anchor;
+		if (!this.zoomFrame) this.zoomFrame = window.requestAnimationFrame(this.zoomStep);
 	}
+
+	/** One frame of zooming: a step of the way to the zoom asked for, moving what's drawn, not drawing it again. */
+	private zoomStep = (): void => {
+		this.zoomFrame = 0;
+		const anchor = this.zoomAnchor;
+		const days = this.daysAt(this.scroller.scrollLeft + anchor);
+		const lineOnScreen = this.axisY - this.scroller.scrollTop;
+		const ratio = this.zoomTarget / this.zoom;
+		const done = Math.abs(Math.log(ratio)) < 0.003 || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		this.zoom = done ? this.zoomTarget : this.zoom * ratio ** ZOOM_EASE;
+		this.place();
+		this.scroller.scrollLeft = this.x(days) - anchor;
+		// The line stays where it was on screen while bigger or smaller cards move it down the track
+		this.scroller.scrollTop = this.axisY - lineOnScreen;
+		if (!done) this.zoomFrame = window.requestAnimationFrame(this.zoomStep);
+	};
 
 	/** The day after the period shown. */
 	private end(): moment.Moment {
@@ -292,9 +345,14 @@ export class TimelineView extends ItemView {
 		return 40 + (days / this.days()) * (this.track.clientWidth - 80);
 	}
 
+	/** Days (with fractions) into the period at a number of pixels from the left edge. */
+	private daysAt(x: number): number {
+		return ((x - 40) / Math.max(1, this.track.clientWidth - 80)) * this.days();
+	}
+
 	/** The date at a number of pixels from the left edge. */
 	private dateAt(x: number): moment.Moment {
-		const days = ((x - 40) / Math.max(1, this.track.clientWidth - 80)) * this.days();
+		const days = this.daysAt(x);
 		return this.start.clone().add(Math.min(this.days() - 1, Math.max(0, Math.floor(days))), 'days');
 	}
 
@@ -341,6 +399,7 @@ export class TimelineView extends ItemView {
 		});
 	}
 
+	/** Draws the period shown: its columns, the line, now, and a card for every entry. place() puts them where they go. */
 	private render(): void {
 		const from = this.start.format('YYYY-MM-DD');
 		const to = this.end().format('YYYY-MM-DD');
@@ -350,19 +409,12 @@ export class TimelineView extends ItemView {
 		this.scalePicker.value = this.scale;
 		this.buildPeriodPicker();
 		this.track.empty();
-		this.layout = this.measureLayout();
-		const width =
-			this.scale === 'year'
-				? Math.max(this.scroller.clientWidth * 2.2, 1800)
-				: Math.max(this.scroller.clientWidth, this.days() * DAY_WIDTH[this.scale] * this.layout.cardWidth + 80);
-		this.track.style.width = `${width * this.zoom}px`;
+		this.baseLayout = this.measureLayout();
 
-		// The day, top to bottom, brightest at the line: the page darkens toward the top and down to a walnut
-		// night with stars, and the sky ruler down the left edge runs midnight to midnight, with noon at the line
-		this.track.createDiv({ cls: 'jeong-timeline-sky' });
 		// Stars at night: at the bottom, behind everything, and a fainter few at the top, over the blur under the
 		// dates, where behind it they'd blur away to nothing
-		for (const cls of ['jeong-timeline-stars', 'jeong-timeline-stars is-top']) {
+		// Each covers only its own stretch of night (styles.css), so dragging around doesn't repaint stars that can't be seen
+		for (const cls of ['jeong-timeline-stars is-above', 'jeong-timeline-stars is-below', 'jeong-timeline-stars is-top']) {
 			const stars = this.track.createDiv({ cls });
 			for (let i = 0; i < 3; i++) stars.createDiv({ cls: 'jeong-timeline-twinkle' });
 		}
@@ -371,18 +423,17 @@ export class TimelineView extends ItemView {
 		// A numeral takes you one step closer: a month to that month, a day to its week, or a week's day to that day.
 		const unit = COLUMN[this.scale];
 		const today = moment().startOf('day');
+		this.columns = [];
 		for (let day = this.start.clone(); day.isBefore(this.end()); day.add(1, unit)) {
-			const left = this.x(this.offset(day));
-			const right = this.x(this.offset(day.clone().add(1, unit)));
 			const column = this.track.createDiv({ cls: `jeong-timeline-month${unit === 'day' ? ' is-day' : ''}` });
-			column.style.left = `${left}px`;
-			column.style.width = `${right - left}px`;
-			column.style.setProperty('--jeong-month-width', `${right - left}px`);
+			this.columns.push({ el: column, from: this.offset(day), to: this.offset(day.clone().add(1, unit)) });
 			if (unit === 'day' && day.isSame(today)) column.addClass('is-today');
 			// The numeral and its name stay at the top together while a busy stretch scrolls up and down
 			const head = column.createDiv({ cls: 'jeong-timeline-month-head' });
 			const numeral = head.createEl('b', { text: day.format(unit === 'month' ? 'MM' : unit === 'day' ? 'D' : 'h') });
 			head.createEl('small', { text: day.format(unit === 'month' ? 'MMMM' : unit === 'hour' ? 'A' : this.scale === 'week' ? 'dddd' : 'ddd') });
+			// The moon that night, under the day's name
+			if (unit === 'day') moonPhase(head.createDiv({ cls: 'jeong-timeline-moon' }), day);
 			const closer = CLOSER[this.scale];
 			if (closer) {
 				const at = day.clone();
@@ -400,81 +451,156 @@ export class TimelineView extends ItemView {
 		for (let i = 0; i < 6; i++) veil.createDiv({ cls: 'jeong-timeline-veil-layer' });
 		this.track.prepend(veil);
 
-		const axis = this.track.createDiv({ cls: 'jeong-timeline-axis' });
+		this.axis = this.track.createDiv({ cls: 'jeong-timeline-axis' });
 
 		// Now: a red line at today, at this hour
 		const now = moment();
+		this.nowLine = null;
 		if (!now.isBefore(this.start) && now.isBefore(this.end())) {
-			const line = this.track.createDiv({ cls: 'jeong-timeline-now' });
-			line.style.left = `${this.x(this.offset(now))}px`;
-			line.createSpan({ text: `${t('timeline.today')} · ${now.format('ll')}` });
+			this.nowLine = this.track.createDiv({ cls: 'jeong-timeline-now' });
+			this.nowLine.createSpan({ text: `${t('timeline.today')} · ${now.format('ll')}` });
 		}
 
-		// Entries as small cards standing on the line, each with a stem to its day.
-		// Keep the newest 8 entries of each day; older ones fold into "+N".
-		const shown: EntryInfo[] = [];
-		const perDay = new Map<number, number>();
-		const hidden = new Map<number, EntryInfo[]>();
-		for (const entry of [...entries].reverse()) {
-			const day = Math.round(this.dayX(entry));
-			const count = perDay.get(day) ?? 0;
-			if (count < MAX_CARDS_PER_DAY) {
-				perDay.set(day, count + 1);
-				shown.push(entry);
-			} else hidden.set(day, [...(hidden.get(day) ?? []), entry]);
-		}
-
-		// Mornings above the line, afternoons and evenings below, so each day reads top to bottom like a clock:
-		// the earliest morning at the top, noon at the line, the latest night at the bottom. Cards stack as far
-		// up or down as a busy day needs (the timeline scrolls both ways).
-		const morning = shown.filter((e) => timeOf(e) < '12:00').sort((a, b) => timeOf(b).localeCompare(timeOf(a)));
-		const afternoon = shown.filter((e) => timeOf(e) >= '12:00').sort((a, b) => timeOf(a).localeCompare(timeOf(b)));
-		const above = stack(morning, (e) => this.dayX(e), this.layout);
-		const below = stack(afternoon, (e) => this.dayX(e), this.layout);
-		const reach = (cards: StackedCard[]) => Math.max(0, ...cards.map((card) => card.offset + card.height));
+		// Every entry as a small card standing on the line, with a stem to its day. However many a day has,
+		// they all stand there: a busy day reaches up and down into the night.
+		this.cards = entries.map((entry) => ({
+			entry,
+			card: this.entryCard(entry),
+			stem: this.track.createDiv({ cls: 'jeong-timeline-stem' }),
+			dot: this.track.createDiv({ cls: 'jeong-timeline-dot' }),
+			isAbove: timeOf(entry) < '12:00',
+			top: 0,
+			height: 0,
+		}));
 
 		this.measureTop();
-		// Where the dates end, for the band under them (on the track, so the faint stars at the top fade out
-		// just below it too); cards at rest stand clear of the band, which fades out a little further down
-		const head = this.track.querySelector<HTMLElement>('.jeong-timeline-month-head');
-		const datesBottom = head ? Math.round(head.getBoundingClientRect().bottom - this.scroller.getBoundingClientRect().top) : this.top + NUMERALS_HEIGHT;
-		this.track.setCssProps({ '--jeong-veil': `${datesBottom}px` });
-		const clear = datesBottom + this.cssLength('--jeong-veil-fade');
-		const height = Math.max(this.scroller.clientHeight, this.top + MIN_HEIGHT);
-		const axisY = Math.max(this.top + Math.round((height - this.top) * 0.56), clear + this.layout.stem + reach(above));
-		this.axisY = axisY;
-		axis.style.top = `${axisY}px`;
-		this.track.style.setProperty('--jeong-axis', `${axisY}px`);
-
-		for (const { entry, x, offset, height: cardHeight, isAbove } of [...above.map((c) => ({ ...c, isAbove: true })), ...below.map((c) => ({ ...c, isAbove: false }))]) {
-			const top = isAbove ? axisY - this.layout.stem - offset - cardHeight : axisY + this.layout.stem + offset;
-
-			const stem = this.track.createDiv({ cls: 'jeong-timeline-stem' });
-			stem.style.left = `${x}px`;
-			stem.style.top = `${isAbove ? top + cardHeight : axisY}px`;
-			stem.style.height = `${isAbove ? axisY - top - cardHeight : top - axisY}px`;
-			const dot = this.track.createDiv({ cls: 'jeong-timeline-dot' });
-			dot.style.left = `${x}px`;
-			dot.style.top = `${axisY}px`;
-
-			this.entryCard(entry, x - this.layout.stemOffset, top, cardHeight);
-		}
-
-		// Days with more entries than fit get a small "+N"
-		for (const [x, folded] of hidden) {
-			const more = this.track.createEl('button', { cls: 'jeong-timeline-more', text: `+${folded.length}`, attr: { 'aria-label': t('timeline.moreEntries') } });
-			more.style.left = `${x}px`;
-			more.style.top = `${axisY}px`;
-			more.addEventListener('click', () => this.showList(folded));
-		}
-
-		// Tall enough for the lowest card, with room under it for the Record button (and, on phones, Obsidian's toolbar)
-		this.track.style.height = `${Math.max(height, axisY + this.layout.stem + reach(below) + (Platform.isMobile ? 200 : 96))}px`;
+		this.veilFade = this.cssLength('--jeong-veil-fade');
+		this.place();
 
 		if (!entries.length) {
 			this.track.createDiv({ cls: 'jeong-timeline-empty', text: t('timeline.empty') });
 			this.preview.hide();
 		}
+	}
+
+	/**
+	 * Puts everything render() drew where it goes at this zoom: the columns, now, the line, and the cards
+	 * stacked up and down from it. Cheap enough to run every frame while zooming.
+	 */
+	private place(): void {
+		const scale = this.cardScale;
+		const base = this.baseLayout;
+		this.layout = {
+			cardWidth: base.cardWidth * scale,
+			cardHeight: base.cardHeight * scale,
+			photoHeight: base.photoHeight * scale,
+			gap: base.gap * scale,
+			stem: base.stem * scale,
+			stemOffset: base.stemOffset * scale,
+		};
+		const width =
+			this.scale === 'year'
+				? Math.max(this.scroller.clientWidth * 2.2, 1800)
+				: Math.max(this.scroller.clientWidth, this.days() * DAY_WIDTH[this.scale] * this.layout.cardWidth + 80);
+		this.track.style.width = `${width * this.zoom}px`;
+
+		for (const { el, from, to } of this.columns) {
+			const left = this.x(from);
+			const right = this.x(to);
+			el.style.left = `${left}px`;
+			el.style.width = `${right - left}px`;
+			el.style.setProperty('--jeong-month-width', `${right - left}px`);
+		}
+		if (this.nowLine) this.nowLine.style.left = `${this.x(this.offset(moment()))}px`;
+
+		// Mornings above the line, afternoons and evenings below, so each day reads top to bottom like a clock:
+		// the earliest morning at the top, noon at the line, the latest night at the bottom. Cards stack as far
+		// up or down as a busy day needs (the timeline scrolls both ways).
+		const morning = this.cards.filter((c) => c.isAbove).sort((a, b) => timeOf(b.entry).localeCompare(timeOf(a.entry)));
+		const afternoon = this.cards.filter((c) => !c.isAbove).sort((a, b) => timeOf(a.entry).localeCompare(timeOf(b.entry)));
+		const above = stack(morning, (e) => this.dayX(e), this.layout);
+		const below = stack(afternoon, (e) => this.dayX(e), this.layout);
+		const reach = (cards: StackedCard[]) => Math.max(0, ...cards.map((card) => card.offset + card.height));
+
+		// Where the dates end, for the band under them (on the track, so the faint stars at the top fade out
+		// just below it too); cards at rest stand clear of the band, which fades out a little further down
+		const head = this.columns[0]?.el.firstElementChild;
+		const datesBottom = head ? Math.round(head.getBoundingClientRect().bottom - this.scroller.getBoundingClientRect().top) : this.top + NUMERALS_HEIGHT;
+		this.track.setCssProps({ '--jeong-veil': `${datesBottom}px` });
+		const clear = datesBottom + this.veilFade;
+		// A day at rest fills the view: midnight at the top, noon at the line, midnight at the bottom. Cards
+		// that reach past it push the line down or the page longer, into deep night (styles.css)
+		const height = Math.max(this.scroller.clientHeight, this.top + MIN_HEIGHT);
+		const restAxis = this.top + Math.round((height - this.top) * 0.56);
+		const axisY = Math.max(restAxis, clear + this.layout.stem + reach(above));
+		this.axisY = axisY;
+		this.axis.style.top = `${axisY}px`;
+		this.track.setCssProps({ '--jeong-axis': `${axisY}px`, '--jeong-morning': `${restAxis}px`, '--jeong-night': `${height - restAxis}px` });
+		this.day = { top: axisY - restAxis, bottom: axisY + height - restAxis, morning: restAxis, night: height - restAxis };
+
+		for (const [stacked, isAbove] of [...above.map((c) => [c, true] as const), ...below.map((c) => [c, false] as const)]) {
+			const { offset, height: cardHeight, x } = stacked;
+			const drawn = stacked.drawn;
+			const top = isAbove ? axisY - this.layout.stem - offset - cardHeight : axisY + this.layout.stem + offset;
+			drawn.top = top;
+			drawn.height = cardHeight;
+			drawn.stem.style.left = `${x}px`;
+			drawn.stem.style.top = `${isAbove ? top + cardHeight : axisY}px`;
+			drawn.stem.style.height = `${isAbove ? axisY - top - cardHeight : top - axisY}px`;
+			drawn.dot.style.left = `${x}px`;
+			drawn.dot.style.top = `${axisY}px`;
+			// Laid out at its zoomed size, drawn at its own size and scaled up or down to that
+			const card = drawn.card;
+			card.style.left = `${x - this.layout.stemOffset}px`;
+			card.style.top = `${top}px`;
+			card.style.width = `${base.cardWidth}px`;
+			card.style.height = `${cardHeight / scale}px`;
+			card.style.setProperty('--jeong-card-scale', String(scale));
+		}
+
+		// Tall enough for the lowest card, with room under it for the Record button (and, on phones, Obsidian's toolbar)
+		this.track.style.height = `${Math.max(height, axisY + this.layout.stem + reach(below) + (Platform.isMobile ? 200 : 96))}px`;
+		this.markNight();
+	}
+
+	/**
+	 * Past either end of a busy day the page deepens into night. The dates turn light while they float over it,
+	 * and the page behind the header darkens with it, since the timeline fades out under the header onto it.
+	 */
+	private markNight = (): void => {
+		const { top, bottom, morning, night } = this.day;
+		// as deep as the night is there (styles.css: full a morning and a half above the day, a night and a half below it)
+		const deep = (y: number) => Math.min(1, Math.max(0, (top - y) / (morning * 1.5), (y - bottom) / (night * 1.5)));
+		const scrolled = this.scroller.scrollTop;
+		this.track.toggleClass('is-dates-at-night', deep(scrolled + this.top + NUMERALS_HEIGHT / 2) > 0.25);
+		// On the view itself, not as a variable its whole tree would inherit, and only when it changes: this runs
+		// on every scroll, and restyling everything under it each time made dragging stutter
+		// The sky ruler's marker spans the part of the day in view
+		const from = this.dayFraction(scrolled + this.top);
+		const to = this.dayFraction(scrolled + this.scroller.clientHeight);
+		this.skyHere.style.top = `${(from * 100).toFixed(2)}%`;
+		this.skyHere.style.height = `${((to - from) * 100).toFixed(2)}%`;
+		const behind = Math.round(deep(scrolled + this.top / 2) * 100);
+		if (behind === this.nightBehind) return;
+		this.nightBehind = behind;
+		this.contentEl.style.backgroundColor = behind ? `color-mix(in srgb, var(--jeong-deep-night) ${behind}%, var(--jeong-page-dusk))` : '';
+	};
+	private nightBehind = 0;
+	private skyHere!: HTMLElement;
+
+	/** Where a point on the page falls in the day: 0 at midnight above, 0.5 at noon on the line, 1 at midnight below. */
+	private dayFraction(y: number): number {
+		const { top, bottom } = this.day;
+		const f = y < this.axisY ? 0.5 * ((y - top) / (this.axisY - top)) : 0.5 + 0.5 * ((y - this.axisY) / (bottom - this.axisY));
+		return Math.min(1, Math.max(0, f));
+	}
+
+	/** Scrolls so a time of day (0 to 1, midnight to midnight, as on the sky ruler) is in the middle of the view. */
+	private goToTimeOfDay(f: number): void {
+		const { top, bottom } = this.day;
+		const y = f < 0.5 ? top + (this.axisY - top) * (f / 0.5) : this.axisY + (bottom - this.axisY) * ((f - 0.5) / 0.5);
+		const visible = this.scroller.clientHeight - this.top;
+		this.scroller.scrollTo({ top: Math.max(0, y - this.top - visible / 2), behavior: 'smooth' });
 	}
 
 	/** How much bigger or smaller cards are drawn at this zoom. */
@@ -491,7 +617,7 @@ export class TimelineView extends ItemView {
 		return width;
 	}
 
-	/** Measures a sample card and the card tokens in styles.css, at this pane's width, for laying out cards. */
+	/** Measures a sample card and the card tokens in styles.css, at this pane's width and card scale 1. */
 	private measureLayout(): Layout {
 		const probe = this.track.createDiv({ cls: 'jeong-timeline-entry jeong-timeline-probe' });
 		const text = probe.createDiv({ cls: 'jeong-timeline-entry-text' });
@@ -501,30 +627,22 @@ export class TimelineView extends ItemView {
 		text.createDiv({ cls: 'jeong-timeline-entry-snippet', text: 'A summary that runs on and on. '.repeat(12) });
 		const card = probe.getBoundingClientRect();
 		const size = (token: string) => this.cssLength(token);
-		const scale = this.cardScale;
 		const layout = {
-			cardWidth: card.width * scale,
-			cardHeight: Math.ceil(card.height) * scale,
-			photoHeight: size('--jeong-card-photo') * scale,
-			gap: size('--jeong-card-gap') * scale,
-			stem: size('--jeong-card-stem') * scale,
-			stemOffset: size('--jeong-card-stem-offset') * scale,
+			cardWidth: card.width,
+			cardHeight: Math.ceil(card.height),
+			photoHeight: size('--jeong-card-photo'),
+			gap: size('--jeong-card-gap'),
+			stem: size('--jeong-card-stem'),
+			stemOffset: size('--jeong-card-stem-offset'),
 		};
 		probe.remove();
 		return layout;
 	}
 
-	/** A small card: main photo, date and time, title, and a short snippet. */
-	private entryCard(entry: EntryInfo, left: number, top: number, height: number): void {
+	/** A small card: main photo, date and time, title, and a short snippet. place() puts it on the timeline. */
+	private entryCard(entry: EntryInfo): HTMLElement {
 		// No aria-label: Obsidian turns those into tooltips, which would cover the card below. Screen readers read the card's text.
 		const card = this.track.createDiv({ cls: 'jeong-timeline-entry', attr: { role: 'button', tabindex: '0', 'data-path': entry.file.path } });
-		card.style.left = `${left}px`;
-		card.style.top = `${top}px`;
-		// Laid out at its zoomed size, drawn at its own size and scaled up or down to that
-		const scale = this.cardScale;
-		card.style.width = `${this.layout.cardWidth / scale}px`;
-		card.style.height = `${height / scale}px`;
-		card.style.setProperty('--jeong-card-scale', String(scale));
 		if (entry.status === 'recorded') card.addClass('is-waiting');
 		if (entry.file.path === this.selected) card.addClass('is-selected');
 
@@ -574,6 +692,7 @@ export class TimelineView extends ItemView {
 		card.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') this.readStory(entry);
 		});
+		return card;
 	}
 
 	/** Any written entry can be illustrated, with or without photos; only on a computer. */
@@ -586,7 +705,7 @@ export class TimelineView extends ItemView {
 		if (this.plugin.painter.isPainting(entry.file)) return;
 		void this.plugin.painter
 			.paint(entry.file, (progress) => {
-				if (progress === 'not-ready' || progress === 'failed') new Notice(paintMessage(progress));
+				if (progress === 'starting' || progress === 'not-ready' || progress === 'failed') new Notice(paintMessage(progress));
 			})
 			.then((done) => {
 				if (!done || this.selected !== entry.file.path || !this.preview.isShown()) return;
@@ -624,20 +743,6 @@ export class TimelineView extends ItemView {
 	private scheduleHide(): void {
 		window.clearTimeout(this.showTimer);
 		this.hideTimer = window.setTimeout(() => void leave(this.preview), 350);
-	}
-
-	/** A short list of entries that didn't fit on the timeline; pick one to preview it. */
-	private showList(entries: EntryInfo[]): void {
-		const card = this.preview;
-		card.empty();
-		arrive(card);
-		card.createDiv({ cls: 'jeong-timeline-card-meta', text: t('timeline.moreEntries') });
-		for (const entry of entries) {
-			const item = card.createEl('button', { cls: 'jeong-timeline-list-item' });
-			item.createSpan({ cls: 'jeong-timeline-entry-meta', text: moment(`${entry.date} ${entry.time || '12:00'}`).format(entry.time ? 'MMM D · LT' : 'MMM D') });
-			item.createSpan({ cls: 'jeong-timeline-entry-title', text: entry.title });
-			item.addEventListener('click', () => void this.showPreview(entry));
-		}
 	}
 
 	/** Opens the entry's story to read, with its picture; from there, its note or raw transcript open in Obsidian. */
@@ -740,7 +845,8 @@ export class TimelineView extends ItemView {
 				// Pinch on a trackpad arrives as Ctrl + wheel
 				if (e.ctrlKey) {
 					e.preventDefault();
-					this.setZoom(this.zoom * Math.exp(-e.deltaY * 0.01), e.clientX - this.scroller.getBoundingClientRect().left);
+					const step = Math.max(-WHEEL_STEP, Math.min(WHEEL_STEP, e.deltaY));
+					this.zoomTo(this.zoomTarget * Math.exp(-step * 0.01), e.clientX - this.scroller.getBoundingClientRect().left);
 					return;
 				}
 				if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
@@ -752,8 +858,20 @@ export class TimelineView extends ItemView {
 	}
 }
 
-interface StackedCard {
+/** A card render() drew, with where place() last put it. */
+interface DrawnCard {
 	entry: EntryInfo;
+	card: HTMLElement;
+	stem: HTMLElement;
+	dot: HTMLElement;
+	/** Mornings stand above the line. */
+	isAbove: boolean;
+	top: number;
+	height: number;
+}
+
+interface StackedCard {
+	drawn: DrawnCard;
 	x: number;
 	/** How far the card sits from the line (past the stem), in pixels. */
 	offset: number;
@@ -764,9 +882,10 @@ interface StackedCard {
  * Stacks cards away from the line in the order given. Each card takes the first gap, nearest the line,
  * that's tall enough for it among the cards it would overlap; cards with photos or a painting are taller.
  */
-function stack(entries: EntryInfo[], dayX: (entry: EntryInfo) => number, layout: Layout): StackedCard[] {
+function stack(cards: DrawnCard[], dayX: (entry: EntryInfo) => number, layout: Layout): StackedCard[] {
 	const placed: StackedCard[] = [];
-	for (const entry of entries) {
+	for (const drawn of cards) {
+		const { entry } = drawn;
 		const x = dayX(entry);
 		const height = layout.cardHeight + (entry.photos.length || entry.painting ? layout.photoHeight : 0);
 		const inTheWay = placed.filter((card) => Math.abs(card.x - x) < layout.cardWidth + layout.gap).sort((a, b) => a.offset - b.offset);
@@ -775,7 +894,7 @@ function stack(entries: EntryInfo[], dayX: (entry: EntryInfo) => number, layout:
 			if (offset + height + layout.gap <= card.offset) break;
 			offset = Math.max(offset, card.offset + card.height + layout.gap);
 		}
-		placed.push({ entry, x, offset, height });
+		placed.push({ drawn, x, offset, height });
 	}
 	return placed;
 }

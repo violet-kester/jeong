@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, SecretComponent, Setting, normalizePath } from 'obsidian';
+import { App, Platform, PluginSettingTab, SecretComponent, Setting, normalizePath } from 'obsidian';
 import type JeongPlugin from './main';
 import { INKS, type InkName } from './paint/ink';
 import type { StoryProvider } from './compose/language-model';
@@ -35,6 +35,8 @@ export interface JeongSettings {
 	xaiImageModel: string;
 	/** Where ComfyUI runs (on this computer), for paintings. */
 	comfyUrl: string;
+	/** On a computer, the command that starts ComfyUI when a painting needs it; '' to start it yourself. */
+	comfyCommand: string;
 	/** How paintings look: added to every picture's description. */
 	paintStyle: string;
 	/** Optional: a ComfyUI workflow in the vault (Export (API)) with {{prompt}} where the words go. Empty uses FLUX.2 klein. */
@@ -109,6 +111,7 @@ export const DEFAULT_SETTINGS: JeongSettings = {
 	openaiImageModel: 'gpt-image-1',
 	xaiImageModel: 'grok-2-image',
 	comfyUrl: 'http://127.0.0.1:8188',
+	comfyCommand: '',
 	paintStyle: PAINT_STYLE,
 	paintWorkflow: '',
 	paintInk: 'cinnabar',
@@ -278,6 +281,8 @@ export class JeongSettingTab extends PluginSettingTab {
 						}),
 				);
 
+			if (Platform.isDesktopApp) this.textSetting('comfyCommand', t('settings.comfyCommand.name'), t('settings.comfyCommand.desc'));
+
 			new Setting(containerEl)
 				.setName(t('settings.paintWorkflow.name'))
 				.setDesc(t('settings.paintWorkflow.desc'))
@@ -294,7 +299,7 @@ export class JeongSettingTab extends PluginSettingTab {
 	}
 
 	/** A text setting that falls back to its default when left empty. */
-	private textSetting(key: 'storyModel' | 'photoModel' | 'ollamaUrl' | 'claudeModel' | 'openaiModel' | 'openaiImageModel' | 'xaiImageModel', name: string, desc: string): void {
+	private textSetting(key: 'storyModel' | 'photoModel' | 'ollamaUrl' | 'claudeModel' | 'openaiModel' | 'openaiImageModel' | 'xaiImageModel' | 'comfyCommand', name: string, desc: string): void {
 		new Setting(this.containerEl)
 			.setName(name)
 			.setDesc(desc)
