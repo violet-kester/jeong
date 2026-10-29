@@ -55,14 +55,29 @@ export interface ComposedEntry {
 
 export type ComposeStep = 'story' | 'summary' | 'check' | 'rewrite';
 
+/**
+ * Recordings shorter than this, in words, are kept in the person's own words: there's too little to shape, and a
+ * model given almost nothing tends to make up the rest (a one-line test once came back as five paragraphs about
+ * the gym and calling home).
+ */
+const SHORT_WORDS = 40;
+/** A story longer than this, for what was said, has things in it that weren't: it falls back to their own words. */
+const maxStoryWords = (said: number) => Math.round(said * 1.5) + 30;
+
 export async function composeEntry(
 	llm: LanguageModel,
 	transcript: string,
 	onStep: (step: ComposeStep, result?: ChatResult) => void,
 ): Promise<ComposedEntry> {
 	// Room for the transcript, the story (about as long), and the instructions
-	const words = transcript.split(/\s+/).length;
+	const words = countWords(transcript);
 	const contextTokens = Math.min(65_536, Math.max(8192, Math.ceil(words * 1.6 * 2.2) + 2048));
+
+	if (words < SHORT_WORDS) {
+		const story = ownWords(transcript);
+		const named = await titleAndSummary(llm, transcript, story, contextTokens, onStep);
+		return { story, aiDraft: story, title: named.title, summary: named.summary, flagged: named.flagged };
+	}
 
 	onStep('story');
 	const draft = await llm.chat(
@@ -94,6 +109,11 @@ export async function composeEntry(
 		onStep('rewrite', rewrite);
 		story = rewrite.content || story;
 		flagged = await check(llm, transcript, story, contextTokens, onStep);
+	}
+	// Far longer than what was said, even after the check: something was made up that the check missed
+	if (countWords(story) > maxStoryWords(words)) {
+		story = ownWords(transcript);
+		flagged = [];
 	}
 
 	const named = await titleAndSummary(llm, transcript, story, contextTokens, onStep);
@@ -224,4 +244,18 @@ function parse<T>(json: string, fallback: T): T {
 	} catch {
 		return fallback;
 	}
+}
+
+function countWords(text: string): number {
+	return text.split(/\s+/).filter(Boolean).length;
+}
+
+/** The transcript as the story, in the person's own words: just without filler sounds (um, uh, erm, hmm). */
+function ownWords(transcript: string): string {
+	return transcript
+		.replace(/\b(?:u+m+|u+h+|e+r+m+|h+m+)\b[,.]?\s*/gi, '')
+		.replace(/[ \t]{2,}/g, ' ')
+		.trim()
+		// a sentence that started with one of them starts with a capital again
+		.replace(/(^|[.!?]\s+)(\p{Ll})/gu, (_, before: string, c: string) => before + c.toUpperCase());
 }

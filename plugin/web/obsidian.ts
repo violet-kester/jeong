@@ -50,6 +50,7 @@ declare global {
 	function createEl<K extends keyof HTMLElementTagNameMap>(tag: K, info?: ElementInfo | string): HTMLElementTagNameMap[K];
 	function createDiv(info?: ElementInfo | string): HTMLDivElement;
 	function createSpan(info?: ElementInfo | string): HTMLSpanElement;
+	function createFragment(callback?: (el: DocumentFragment) => void): DocumentFragment;
 }
 
 Node.prototype.createEl = function <K extends keyof HTMLElementTagNameMap>(this: Node, tag: K, info?: ElementInfo | string, callback?: (el: HTMLElementTagNameMap[K]) => void) {
@@ -109,6 +110,11 @@ Object.assign(window, {
 	createEl: (tag: keyof HTMLElementTagNameMap, info?: ElementInfo | string) => build(tag, info),
 	createDiv: (info?: ElementInfo | string) => build('div', info),
 	createSpan: (info?: ElementInfo | string) => build('span', info),
+	createFragment: (callback?: (el: DocumentFragment) => void) => {
+		const fragment = document.createDocumentFragment();
+		callback?.(fragment);
+		return fragment;
+	},
 	activeDocument: document,
 	activeWindow: window,
 });
@@ -168,8 +174,8 @@ const phone = new URLSearchParams(location.search).has('phone') || /iPhone|Andro
 export const Platform = { isMobile: phone, isDesktopApp: false, isDesktop: !phone, isIosApp: phone, isAndroidApp: false, isWin: /Windows/.test(navigator.userAgent) };
 
 export class Notice {
-	constructor(message: string) {
-		console.info('Notice:', message);
+	constructor(message: string | DocumentFragment) {
+		console.info('Notice:', typeof message === 'string' ? message : message.textContent);
 	}
 	setMessage(message: string): this {
 		console.info('Notice:', message);
@@ -294,6 +300,41 @@ export class Modal extends Component {
 	}
 	onOpen(): void {}
 	onClose(): void {}
+}
+
+/** Obsidian's right-click menu: a list of items at the pointer that closes on the next click anywhere. */
+export class Menu {
+	private items: { title: string; icon: string; warning: boolean; click: () => unknown }[] = [];
+	addItem(build: (item: MenuItem) => unknown): this {
+		const entry = { title: '', icon: '', warning: false, click: () => {} };
+		const item: MenuItem = {
+			setTitle: (title) => ((entry.title = title), item),
+			setIcon: (icon) => ((entry.icon = icon), item),
+			setWarning: (warning) => ((entry.warning = warning), item),
+			onClick: (click) => ((entry.click = click), item),
+		};
+		build(item);
+		this.items.push(entry);
+		return this;
+	}
+	showAtMouseEvent(event: MouseEvent): this {
+		const menu = document.body.createDiv({ cls: 'menu' });
+		menu.setCssProps({ position: 'fixed', left: `${event.clientX}px`, top: `${event.clientY}px`, 'z-index': '100' });
+		for (const entry of this.items) {
+			const row = menu.createDiv({ cls: `menu-item${entry.warning ? ' is-warning' : ''}` });
+			setIcon(row.createDiv({ cls: 'menu-item-icon' }), entry.icon);
+			row.createDiv({ cls: 'menu-item-title', text: entry.title });
+			row.addEventListener('click', () => void entry.click());
+		}
+		setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }));
+		return this;
+	}
+}
+interface MenuItem {
+	setTitle(title: string): MenuItem;
+	setIcon(icon: string): MenuItem;
+	setWarning(warning: boolean): MenuItem;
+	onClick(click: () => unknown): MenuItem;
 }
 
 export class Plugin {}

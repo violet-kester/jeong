@@ -2240,6 +2240,27 @@ body {
 	color: rgba(241, 232, 214, 0.62);
 }
 
+/* ⋯ at the end of the preview's buttons: Hide and Delete */
+.jeong button.jeong-timeline-card-more-button {
+	width: var(--jeong-space-xl);
+	height: var(--jeong-space-xl);
+	margin-left: auto;
+	padding: 0;
+	display: grid;
+	place-items: center;
+	border: 0;
+	border-radius: 50%;
+	background: transparent;
+	box-shadow: none;
+	color: rgba(241, 232, 214, 0.62);
+	cursor: pointer;
+}
+
+.jeong button.jeong-timeline-card-more-button:hover {
+	background: rgba(241, 232, 214, 0.12);
+	color: #F1E8D6;
+}
+
 
 
 /* Photo tray in the recording panel */

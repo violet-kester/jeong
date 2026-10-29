@@ -1,7 +1,8 @@
-import { ItemView, Notice, Platform, WorkspaceLeaf, debounce, moment, setIcon } from 'obsidian';
+import { ItemView, Menu, Notice, Platform, WorkspaceLeaf, debounce, moment, setIcon } from 'obsidian';
 import type JeongPlugin from '../main';
 import { t } from '../i18n';
-import { listEntries, type EntryInfo } from '../journal/entries';
+import { deleteEntry, listEntries, setHidden, type EntryInfo } from '../journal/entries';
+import { ConfirmModal } from './confirm-modal';
 import { setNightSky } from './night-sky';
 import { arrive, leave } from './motion';
 import { openButtonPill } from './open-button';
@@ -727,6 +728,11 @@ export class TimelineView extends ItemView {
 		card.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') this.readStory(entry);
 		});
+		// Right-click, or a long press on a phone, for Hide and Delete
+		card.addEventListener('contextmenu', (e) => {
+			e.preventDefault();
+			this.entryMenu(entry).showAtMouseEvent(e);
+		});
 		return card;
 	}
 
@@ -793,9 +799,7 @@ export class TimelineView extends ItemView {
 		const card = this.preview;
 		card.empty();
 		arrive(card);
-		const meta = [moment(`${entry.date} ${entry.time || '12:00'}`).format(entry.time ? 'LLLL' : 'LL'), entry.duration]
-			.filter(Boolean)
-			.join(' · ');
+		const when = moment(`${entry.date} ${entry.time || '12:00'}`);
 		// The painting leads; the photos follow in the strip
 		const rest = entry.painting ? entry.photos : entry.photos.slice(1);
 		const main = entry.painting ?? entry.photos[0];
@@ -810,13 +814,45 @@ export class TimelineView extends ItemView {
 			for (const photo of rest.slice(0, 4)) strip.createEl('img', { attr: { src: this.app.vault.getResourcePath(photo), alt: '' } });
 			if (rest.length > 4) strip.createSpan({ cls: 'jeong-timeline-card-more', text: `+${rest.length - 4}` });
 		}
-		card.createDiv({ cls: 'jeong-timeline-card-meta', text: meta });
+		// The day on one line, the time and length on the next
+		const meta = card.createDiv({ cls: 'jeong-timeline-card-meta' });
+		meta.createDiv({ text: when.format('dddd, LL') });
+		const timeAndLength = [entry.time ? when.format('LT') : '', entry.duration].filter(Boolean).join(' · ');
+		if (timeAndLength) meta.createDiv({ text: timeAndLength });
 		card.createEl('h2', { text: entry.title });
 		const excerpt = entry.status === 'recorded' ? t('timeline.waiting') : entry.summary || (await this.excerpt(entry));
 		if (excerpt) card.createEl('p', { text: excerpt });
 		const actions = card.createDiv({ cls: 'jeong-timeline-card-actions' });
 		openButtonPill(actions, () => this.readStory(entry), t('story.read'));
 		if (this.canIllustrate(entry)) this.illustrateButton(actions, entry);
+		// Hide and Delete, here too, for phones and anyone who doesn't think to right-click
+		const more = actions.createEl('button', { cls: 'jeong-timeline-card-more-button', attr: { 'aria-label': t('entry.more') } });
+		setIcon(more, 'more-horizontal');
+		more.addEventListener('click', (e) => this.entryMenu(entry).showAtMouseEvent(e));
+	}
+
+	/** Hide (with Undo) and Delete (after asking), from a card's right-click or the preview's ⋯ button. */
+	private entryMenu(entry: EntryInfo): Menu {
+		const hide = async () => {
+			void leave(this.preview);
+			await setHidden(this.app, entry.file, true);
+			const undo = createFragment((note) => {
+				note.append(`${t('entry.hidden')} `);
+				note.createEl('a', { text: t('entry.undo'), href: '#' }).addEventListener('click', (e) => {
+					e.preventDefault();
+					void setHidden(this.app, entry.file, false);
+				});
+			});
+			new Notice(undo, 8000);
+		};
+		const remove = () =>
+			new ConfirmModal(this.app, t('entry.deleteTitle'), t('entry.deleteBody'), t('entry.delete'), async () => {
+				void leave(this.preview);
+				await deleteEntry(this.app, entry.file, entry.date);
+			}).open();
+		return new Menu()
+			.addItem((item) => item.setTitle(t('entry.hide')).setIcon('eye-off').onClick(hide))
+			.addItem((item) => item.setTitle(t('entry.delete')).setIcon('trash-2').setWarning(true).onClick(remove));
 	}
 
 	/** Illustrate, beside Open entry in the preview. */
