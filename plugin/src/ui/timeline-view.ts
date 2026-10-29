@@ -1,4 +1,4 @@
-import { ItemView, Menu, Notice, Platform, WorkspaceLeaf, debounce, moment, setIcon } from 'obsidian';
+import { ItemView, Menu, Notice, Platform, TFile, WorkspaceLeaf, debounce, moment, setIcon } from 'obsidian';
 import type JeongPlugin from '../main';
 import { t } from '../i18n';
 import { deleteEntry, listEntries, setHidden, type EntryInfo } from '../journal/entries';
@@ -11,6 +11,7 @@ import { brushReveal } from '../paint/brush-reveal';
 import { storyText } from '../journal/story-text';
 import { StoryModal } from './story-modal';
 import { applyInk } from '../paint/ink';
+import { inkInset } from '../paint/ink-bounds';
 import { moonPhase } from './moon';
 
 export const TIMELINE_VIEW = 'jeong-timeline';
@@ -50,6 +51,10 @@ interface Layout {
 	cardHeight: number;
 	/** What a picture adds to a card. */
 	photoHeight: number;
+	/** How wide a card's picture is (the card's inner width). */
+	photoWidth: number;
+	/** What a picture adds to a card besides the picture itself (the space above it). */
+	photoExtra: number;
 	/** Between cards. */
 	gap: number;
 	/** Between the line and the nearest cards. */
@@ -87,7 +92,10 @@ export class TimelineView extends ItemView {
 	private zoomTarget = 1;
 	private zoomAnchor = 0;
 	private themeButton?: HTMLButtonElement;
-	private layout: Layout = { cardWidth: 220, cardHeight: 92, photoHeight: 132, gap: 10, stem: 18, stemOffset: 14 };
+	private layout: Layout = { cardWidth: 220, cardHeight: 92, photoHeight: 132, photoWidth: 200, photoExtra: 8, gap: 10, stem: 18, stemOffset: 14 };
+	/** Each picture's shape (height over width), learned as it loads, so its card can be just as tall as it needs. */
+	private aspects = new Map<string, number>();
+	private placeFrame = 0;
 	/** The layout at card scale 1, measured when the period is drawn; zooming scales it. */
 	private baseLayout: Layout = this.layout;
 	private veilFade = 0;
@@ -170,8 +178,9 @@ export class TimelineView extends ItemView {
 		today.addEventListener('click', () => this.goToToday());
 
 		this.scroller = root.createDiv({ cls: 'jeong-timeline-scroller' });
-		// The frosted glass under the header and bar
+		// The frosted glass under the header and bar, and the stars over it, which line up with the page's own
 		this.glass = root.createDiv({ cls: 'jeong-timeline-glass' });
+		this.glassStars = root.createDiv({ cls: 'jeong-timeline-glass-stars' });
 		this.track = this.scroller.createDiv({ cls: 'jeong-timeline-track jeong-sky' });
 		// The sky ruler down the left edge: the day, midnight to midnight, in the sky's colors where the page changes,
 		// with deep space in ink at either end, and a marker on the part in view; a click goes to that time of day
@@ -507,6 +516,8 @@ export class TimelineView extends ItemView {
 			cardWidth: base.cardWidth * scale,
 			cardHeight: base.cardHeight * scale,
 			photoHeight: base.photoHeight * scale,
+			photoWidth: base.photoWidth * scale,
+			photoExtra: base.photoExtra * scale,
 			gap: base.gap * scale,
 			stem: base.stem * scale,
 			stemOffset: base.stemOffset * scale,
@@ -531,8 +542,8 @@ export class TimelineView extends ItemView {
 		// up or down as a busy day needs (the timeline scrolls both ways).
 		const morning = this.cards.filter((c) => c.isAbove).sort((a, b) => timeOf(b.entry).localeCompare(timeOf(a.entry)));
 		const afternoon = this.cards.filter((c) => !c.isAbove).sort((a, b) => timeOf(a.entry).localeCompare(timeOf(b.entry)));
-		const above = stack(morning, (e) => this.dayX(e), this.layout);
-		const below = stack(afternoon, (e) => this.dayX(e), this.layout);
+		const above = stack(morning, (e) => this.dayX(e), (e) => this.pictureHeight(e), this.layout);
+		const below = stack(afternoon, (e) => this.dayX(e), (e) => this.pictureHeight(e), this.layout);
 		const reach = (cards: StackedCard[]) => Math.max(0, ...cards.map((card) => card.offset + card.height));
 
 		// Where the dates end, for the band under them (on the track, so the faint stars at the top fade out
@@ -602,6 +613,7 @@ export class TimelineView extends ItemView {
 		const at = Math.min(this.sky.clientHeight - height, Math.max(0, (from + to) / 2 - height / 2));
 		this.skyHere.style.top = `${at.toFixed(1)}px`;
 		this.skyHere.style.height = `${height.toFixed(1)}px`;
+		this.starsOverHeader(scrolled);
 		const behind = Math.round(deep(scrolled + this.top / 2) * 100);
 		if (behind === this.nightBehind) return;
 		this.nightBehind = behind;
@@ -613,7 +625,39 @@ export class TimelineView extends ItemView {
 		});
 	};
 	private glass!: HTMLElement;
+	private glassStars!: HTMLElement;
 	private backdrop!: HTMLElement;
+	private starsShown = -1;
+
+	/**
+	 * The page fades out under the header, stars and all, so the header shows the stars itself: the same stars,
+	 * placed to line up with the page's as it scrolls, as many as the sky has at the top of the view (styles.css,
+	 * .jeong-timeline-stars). Only this one element changes, so scrolling stays smooth.
+	 */
+	private starsOverHeader(scrolled: number): void {
+		const { top, bottom, morning, night } = this.day;
+		const y = scrolled + this.top / 2;
+		const above = y < top;
+		// How many stars there are there: the ramp in styles.css, in mornings above the day or evenings past its end
+		const ramp = (at: number, stops: [number, number][]) => {
+			for (let i = 1; i < stops.length; i++) {
+				const [x0, v0] = stops[i - 1] ?? [0, 0];
+				const [x1, v1] = stops[i] ?? [0, 0];
+				if (at <= x1) return at <= x0 ? v0 : v0 + ((v1 - v0) * (at - x0)) / (x1 - x0);
+			}
+			return stops[stops.length - 1]?.[1] ?? 0;
+		};
+		const shown = above
+			? ramp((top - y) / morning, [[0, 0], [0.4, 0.15], [1.5, 0.35], [3, 0.6], [5, 1]])
+			: ramp((y - bottom) / night, [[-0.45, 0], [0, 0.15], [1.5, 0.35], [3, 0.6], [5, 1]]);
+		// The page's star tiles start at the top of the stars above the day, or of those below it
+		const tilesFrom = above ? 0 : this.axisY + night * 0.55;
+		this.glassStars.style.backgroundPosition = `${-this.scroller.scrollLeft}px ${tilesFrom - scrolled}px`;
+		const rounded = Math.round(shown * 100) / 100;
+		if (rounded === this.starsShown) return;
+		this.starsShown = rounded;
+		this.glassStars.style.opacity = String(rounded);
+	}
 	private nightBehind = 0;
 	private sky!: HTMLElement;
 	private skyMap!: HTMLElement;
@@ -663,11 +707,17 @@ export class TimelineView extends ItemView {
 		// Long enough to fill both of the summary's lines on any card
 		text.createDiv({ cls: 'jeong-timeline-entry-snippet', text: 'A summary that runs on and on. '.repeat(12) });
 		const card = probe.getBoundingClientRect();
+		// And with a picture of a known height, for how wide pictures are and what else they add
+		const picture = probe.createDiv({ cls: 'jeong-timeline-entry-photo' });
+		picture.setCssProps({ flex: 'none', height: '100px' });
+		const withPicture = probe.getBoundingClientRect().height;
 		const size = (token: string) => this.cssLength(token);
 		const layout = {
 			cardWidth: card.width,
 			cardHeight: Math.ceil(card.height),
 			photoHeight: size('--jeong-card-photo'),
+			photoWidth: picture.getBoundingClientRect().width,
+			photoExtra: Math.max(0, withPicture - card.height - 100),
 			gap: size('--jeong-card-gap'),
 			stem: size('--jeong-card-stem'),
 			stemOffset: size('--jeong-card-stem-offset'),
@@ -675,6 +725,55 @@ export class TimelineView extends ItemView {
 		probe.remove();
 		return layout;
 	}
+
+	/**
+	 * How much a card's picture adds to it: the main picture (the painting, or else the first photo) whole, across
+	 * the card's full width at its own shape, however tall; others that take turns fill the same space.
+	 */
+	private pictureHeight(entry: EntryInfo): number {
+		const main = entry.painting ?? entry.photos[0];
+		if (!main) return 0;
+		const { photoWidth, photoHeight, photoExtra } = this.layout;
+		const aspect = this.aspects.get(main.path) ?? photoHeight / photoWidth;
+		return photoExtra + photoWidth * aspect;
+	}
+
+	/** Learns a picture's shape as it loads, then puts the cards where they go again, now that its card's height is known. */
+	private learnShape(file: TFile | undefined, painting: boolean): void {
+		if (!file || this.aspects.has(file.path) || this.learning.has(file.path)) return;
+		this.learning.add(file.path);
+		const learned = (aspect: number) => {
+			this.aspects.set(file.path, aspect);
+			if (this.placeFrame) return;
+			this.placeFrame = window.requestAnimationFrame(() => {
+				this.placeFrame = 0;
+				this.place();
+			});
+		};
+		if (painting) {
+			// A painting's plain paper margin is trimmed away: the card shows, and is shaped by, just the ink
+			void this.app.vault
+				.readBinary(file)
+				.then(inkInset)
+				.then((ink) => {
+					if (!ink) return;
+					const crop = `inset(${[ink.top, ink.right, ink.bottom, ink.left].map((f) => `${(f * 100).toFixed(2)}%`).join(' ')})`;
+					this.crops.set(file.path, crop);
+					this.track.querySelectorAll<HTMLElement>(`img[data-painting="${CSS.escape(file.path)}"]`).forEach((img) => img.setCssProps({ '--jeong-crop': crop }));
+					learned((ink.aspect * (1 - ink.top - ink.bottom)) / Math.max(0.01, 1 - ink.left - ink.right));
+				})
+				.catch(() => undefined);
+			return;
+		}
+		const img = new Image();
+		img.onload = () => {
+			if (img.naturalWidth) learned(img.naturalHeight / img.naturalWidth);
+		};
+		img.src = this.app.vault.getResourcePath(file);
+	}
+	/** Pictures whose shape is being learned, and each painting's crop to its ink (--jeong-crop, an object-view-box). */
+	private learning = new Set<string>();
+	private crops = new Map<string, string>();
 
 	/** A small card: main photo, date and time, title, and a short snippet. place() puts it on the timeline. */
 	private entryCard(entry: EntryInfo): HTMLElement {
@@ -701,8 +800,13 @@ export class TimelineView extends ItemView {
 				if (this.plugin.painter.takeFresh(entry.file)) {
 					brushReveal(pictures, src);
 					pictures.lastElementChild?.addClass('is-shown', 'jeong-painting');
-				} else pictures.createEl('img', { cls: 'is-shown jeong-painting', attr: { src, alt: '' } });
+				} else {
+					const img = pictures.createEl('img', { cls: 'is-shown jeong-painting', attr: { src, alt: '', 'data-painting': entry.painting.path } });
+					const crop = this.crops.get(entry.painting.path);
+					if (crop) img.setCssProps({ '--jeong-crop': crop });
+				}
 			}
+			this.learnShape(entry.painting ?? entry.photos[0], !!entry.painting);
 			entry.photos.forEach((photo, i) =>
 				pictures.createEl('img', { cls: i === 0 && !entry.painting ? 'is-shown' : '', attr: { src: this.app.vault.getResourcePath(photo), alt: '' } }),
 			);
@@ -952,14 +1056,15 @@ interface StackedCard {
 
 /**
  * Stacks cards away from the line in the order given. Each card takes the first gap, nearest the line,
- * that's tall enough for it among the cards it would overlap; cards with photos or a painting are taller.
+ * that's tall enough for it among the cards it would overlap; cards with photos or a painting are taller, by
+ * as much as their picture needs.
  */
-function stack(cards: DrawnCard[], dayX: (entry: EntryInfo) => number, layout: Layout): StackedCard[] {
+function stack(cards: DrawnCard[], dayX: (entry: EntryInfo) => number, picture: (entry: EntryInfo) => number, layout: Layout): StackedCard[] {
 	const placed: StackedCard[] = [];
 	for (const drawn of cards) {
 		const { entry } = drawn;
 		const x = dayX(entry);
-		const height = layout.cardHeight + (entry.photos.length || entry.painting ? layout.photoHeight : 0);
+		const height = layout.cardHeight + picture(entry);
 		const inTheWay = placed.filter((card) => Math.abs(card.x - x) < layout.cardWidth + layout.gap).sort((a, b) => a.offset - b.offset);
 		let offset = 0;
 		for (const card of inTheWay) {

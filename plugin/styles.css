@@ -42,6 +42,18 @@
 	--jeong-stars-3: var(--jeong-stars-light-3);
 }
 
+/* No scrollbars anywhere in Jeong: their tracks cut the sky and the paper off short of the edges. Everything
+   still scrolls with the wheel, a trackpad, touch, or (on the timeline) by dragging and with the sky ruler. */
+.jeong,
+.jeong * {
+	scrollbar-width: none;
+}
+
+.jeong::-webkit-scrollbar,
+.jeong *::-webkit-scrollbar {
+	display: none;
+}
+
 body.theme-dark:not(.jeong-theme-light) .jeong,
 body.jeong-theme-dark .jeong {
 	--jeong-ink: #EEE5D3;
@@ -805,7 +817,7 @@ body {
 	height: auto;
 }
 
-/* Square while there are no photos; a slim bar above them once there are */
+/* The place to add photos: a square above them, before and after there are some */
 .jeong .jeong-entry-side .jeong-photos button.jeong-photos-drop {
 	order: -1;
 	width: 100%;
@@ -816,11 +828,6 @@ body {
 	padding: 0;
 	border: 1px dashed var(--jeong-hairline);
 	border-radius: 0.1875rem;
-}
-
-.jeong .jeong-entry-side .jeong-photos:has(.jeong-photos-item) button.jeong-photos-drop {
-	aspect-ratio: auto;
-	height: var(--jeong-space-xl);
 }
 
 .jeong-entry-side .jeong-photos-drop span:not(.jeong-photos-icon) {
@@ -1119,6 +1126,21 @@ body {
 	mask-image: linear-gradient(#000 40%, transparent);
 }
 
+/* Stars over the header, where the page fades out: the page's own stars, lined up with them as it scrolls (the
+   timeline sets where, and how many), fading out just where the page fades in, so together they're seamless */
+.jeong-timeline-glass-stars {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: calc(var(--jeong-timeline-top, 0rem) + 4.5rem);
+	z-index: 5;
+	opacity: 0;
+	pointer-events: none;
+	background-image: var(--jeong-stars);
+	mask-image: linear-gradient(#000, rgba(0, 0, 0, 0.8) calc(var(--jeong-timeline-top, 0rem) - 1.5rem), transparent);
+}
+
 .jeong-timeline-bar {
 	display: flex;
 	align-items: center;
@@ -1346,16 +1368,9 @@ body {
 	cursor: grab;
 	/* dragging pans the year; it never selects the numerals or card text */
 	user-select: none;
-	/* no scrollbars: their solid tracks cut the sky off short of the edges; drag, the wheel, and the sky ruler
-	   (which shows where you are) get around instead */
-	scrollbar-width: none;
 	/* whatever scrolls up under the header and bar fades away slowly, over a long, soft stretch, so nothing
 	   is cut off at an edge */
 	mask-image: linear-gradient(transparent, rgba(0, 0, 0, 0.2) calc(var(--jeong-timeline-top, 0rem) - 1.5rem), #000 calc(var(--jeong-timeline-top, 0rem) + 4.5rem));
-}
-
-.jeong-timeline-scroller::-webkit-scrollbar {
-	display: none;
 }
 
 /*
@@ -1613,22 +1628,38 @@ body {
 	--jeong-stars-from: calc(var(--jeong-axis) + var(--jeong-night) * 0.55);
 	top: var(--jeong-stars-from);
 	bottom: 0;
-	/* out after sunset (about 7 PM), all out by night */
-	mask-image: linear-gradient(transparent 0, #000 calc(var(--jeong-night) * 0.33));
+	/* out after sunset (about 7 PM), slowly: faint by midnight, a third out where deep space is at its darkest,
+	   more and more past it, and all out only in deep, deep space, five evenings past midnight, which a day rarely
+	   reaches (positions from where they start, 0.55 of the evening below the line) */
+	mask-image: linear-gradient(
+		transparent 0,
+		rgba(0, 0, 0, 0.15) calc(var(--jeong-night) * 0.45),
+		rgba(0, 0, 0, 0.35) calc(var(--jeong-night) * 1.95),
+		rgba(0, 0, 0, 0.6) calc(var(--jeong-night) * 3.45),
+		#000 calc(var(--jeong-night) * 5.45)
+	);
 }
 
+/* The twinkling ones only from where deep space is at its darkest, faint at first, at full strength only in deep, deep space */
 .jeong-timeline-stars.is-below .jeong-timeline-twinkle {
-	mask-image: linear-gradient(transparent calc(var(--jeong-night) * 0.45), #000 calc(var(--jeong-night) * 1.6));
+	mask-image: linear-gradient(transparent calc(var(--jeong-night) * 1.95), rgba(0, 0, 0, 0.3) calc(var(--jeong-night) * 3.45), #000 calc(var(--jeong-night) * 5.45));
 }
 
 .jeong-timeline-stars.is-above {
 	top: 0;
 	height: var(--jeong-dawn);
-	mask-image: linear-gradient(#000 calc(var(--jeong-dawn) - var(--jeong-morning) * 1.2), rgba(0, 0, 0, 0.3) calc(var(--jeong-dawn) - var(--jeong-morning) * 0.6), transparent 100%);
+	/* the same, mirrored, over a busy early morning */
+	mask-image: linear-gradient(
+		#000 calc(var(--jeong-dawn) - var(--jeong-morning) * 5),
+		rgba(0, 0, 0, 0.6) calc(var(--jeong-dawn) - var(--jeong-morning) * 3),
+		rgba(0, 0, 0, 0.35) calc(var(--jeong-dawn) - var(--jeong-morning) * 1.5),
+		rgba(0, 0, 0, 0.15) calc(var(--jeong-dawn) - var(--jeong-morning) * 0.4),
+		transparent 100%
+	);
 }
 
 .jeong-timeline-stars.is-above .jeong-timeline-twinkle {
-	mask-image: linear-gradient(#000 calc(var(--jeong-dawn) - var(--jeong-morning) * 1.6), transparent calc(var(--jeong-dawn) - var(--jeong-morning) * 0.6));
+	mask-image: linear-gradient(#000 calc(var(--jeong-dawn) - var(--jeong-morning) * 5), rgba(0, 0, 0, 0.3) calc(var(--jeong-dawn) - var(--jeong-morning) * 3), transparent calc(var(--jeong-dawn) - var(--jeong-morning) * 1.5));
 }
 
 /* At the top, fainter ones over the blur under the dates (behind it they'd blur away), fading out below it */
@@ -1879,7 +1910,8 @@ body {
 	border-radius: 0.25rem;
 }
 
-/* Photos stacked; the one shown fades in over the last, slowly */
+/* Photos stacked; the one shown fades in over the last, slowly. The card is sized to the main picture's shape
+   (src/ui/timeline-view.ts), so it fills the card's width whole; others that take turns fill the same space */
 .jeong-timeline-entry-photo img {
 	position: absolute;
 	inset: 0;
@@ -1894,9 +1926,9 @@ body {
 	opacity: 1;
 }
 
-/* The picture area is a set height (cards are stacked by it), so a photo fits in it whole; paintings are made to fill it */
-.jeong-timeline-entry-photo img:not(.jeong-painting) {
-	object-fit: contain;
+/* A painting shows just its ink: the plain paper around it is cropped away (src/ui/timeline-view.ts) */
+.jeong-timeline-entry-photo img.jeong-painting {
+	object-view-box: var(--jeong-crop, none);
 }
 
 /* A new painting, brushed on (src/paint/brush-reveal.ts); on a card it takes turns with the photos like they do */
@@ -2115,7 +2147,11 @@ body {
 }
 
 .jeong .jeong-entry-painting button.jeong-entry-illustrate {
-	display: inline-flex;
+	/* the column's full width, so its edges line up with the photos above */
+	display: flex;
+	width: 100%;
+	box-sizing: border-box;
+	justify-content: center;
 	align-items: center;
 	gap: var(--jeong-space-2xs);
 	padding: var(--jeong-space-3xs) var(--jeong-space-xs) var(--jeong-space-3xs) var(--jeong-space-xs);
