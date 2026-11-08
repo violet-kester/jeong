@@ -62,6 +62,13 @@ export class PerformanceModal extends Modal {
 			cls: 'jeong-perf-summary',
 			text: `${recordings} ${t('perf.recordings')} · ${audioMinutes.toFixed(1)} ${t('perf.minutes')} · ${errors} ${t('perf.errors')} · ${t('perf.since')} ${firstDay(records)}`,
 		});
+		const restarts = records.filter((record) => record.event === 'start' && record.unexpected);
+		const phone = restarts.filter((record) => record.platform === 'mobile').length;
+		const last = restarts[restarts.length - 1];
+		contentEl.createEl('p', {
+			cls: 'jeong-perf-summary',
+			text: `${t('perf.restarts')}: ${restarts.length}${last ? ` (${phone} ${t('perf.onPhone')}) · ${t('perf.last')} ${new Date(last.ts).toLocaleString()}` : ''}`,
+		});
 		contentEl.createEl('p', { cls: 'jeong-perf-note', text: `${t('perf.where')} ${this.metrics.directory}` });
 	}
 

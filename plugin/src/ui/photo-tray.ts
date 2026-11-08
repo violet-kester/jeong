@@ -8,6 +8,8 @@ import { t } from '../i18n';
 export interface Photo {
 	file: File;
 	url: string;
+	/** Written to the journal (or on its way): it can no longer be removed or reordered here. */
+	saved: boolean;
 }
 
 export class PhotoTray {
@@ -15,9 +17,14 @@ export class PhotoTray {
 	private strip: HTMLElement;
 	private input: HTMLInputElement;
 	private dragFrom = -1;
+	/** Called when photos are added, so a window with a saved entry can write them straight away. */
+	onAdd: (() => void) | null = null;
 
-	/** `label` replaces the button's words, e.g. a shorter "Add photos" where space is tight. */
-	constructor(container: HTMLElement, label = t('photos.add')) {
+	/**
+	 * `label` replaces the button's words, e.g. a shorter "Add photos" where space is tight.
+	 * `stripHost` puts the row of photos somewhere other than beside the button.
+	 */
+	constructor(container: HTMLElement, label = t('photos.add'), stripHost?: HTMLElement) {
 		const tray = container.createDiv({ cls: 'jeong-photos' });
 		this.input = tray.createEl('input', { type: 'file', attr: { accept: 'image/*', multiple: '' } });
 		this.input.hide();
@@ -26,7 +33,7 @@ export class PhotoTray {
 			this.input.value = '';
 		});
 
-		this.strip = tray.createDiv({ cls: 'jeong-photos-strip' });
+		this.strip = (stripHost ?? tray).createDiv({ cls: 'jeong-photos-strip' });
 		const drop = tray.createEl('button', { cls: 'jeong-photos-drop' });
 		setIcon(drop.createSpan({ cls: 'jeong-photos-icon' }), 'image-plus');
 		drop.createSpan({ text: label });
@@ -49,9 +56,24 @@ export class PhotoTray {
 
 	add(files: File[]): void {
 		for (const file of files.filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name))) {
-			this.photos.push({ file, url: URL.createObjectURL(file) });
+			this.photos.push({ file, url: URL.createObjectURL(file), saved: false });
 		}
 		this.render();
+		this.onAdd?.();
+	}
+
+	/** Takes the photos not written yet and marks them as written, so nothing else writes them too. */
+	claim(): Photo[] {
+		const photos = this.photos.filter((photo) => !photo.saved);
+		photos.forEach((photo) => (photo.saved = true));
+		if (photos.length) this.render();
+		return photos;
+	}
+
+	/** Writing them failed: they're waiting again. */
+	release(photos: Photo[]): void {
+		photos.forEach((photo) => (photo.saved = false));
+		if (photos.length) this.render();
 	}
 
 	dispose(): void {
@@ -61,22 +83,28 @@ export class PhotoTray {
 
 	private render(): void {
 		this.strip.empty();
+		// Once one is in the journal, the order is too
+		const ordered = this.photos.some((photo) => photo.saved);
 		this.photos.forEach((photo, index) => {
-			const item = this.strip.createDiv({ cls: 'jeong-photos-item', attr: { draggable: 'true' } });
+			const item = this.strip.createDiv({ cls: 'jeong-photos-item', attr: { draggable: ordered ? 'false' : 'true' } });
 			if (index === 0) item.addClass('is-main');
 			item.createEl('img', { attr: { src: photo.url, alt: photo.file.name } });
 
-			const star = item.createEl('button', { cls: 'jeong-photos-star', attr: { 'aria-label': t('photos.makeMain') } });
-			setIcon(star, 'star');
-			star.addEventListener('click', () => this.move(index, 0));
+			if (!ordered) {
+				const star = item.createEl('button', { cls: 'jeong-photos-star', attr: { 'aria-label': t('photos.makeMain') } });
+				setIcon(star, 'star');
+				star.addEventListener('click', () => this.move(index, 0));
+			}
 
-			const remove = item.createEl('button', { cls: 'jeong-photos-remove', attr: { 'aria-label': t('photos.remove') } });
-			setIcon(remove, 'x');
-			remove.addEventListener('click', () => {
-				URL.revokeObjectURL(photo.url);
-				this.photos.splice(index, 1);
-				this.render();
-			});
+			if (!photo.saved) {
+				const remove = item.createEl('button', { cls: 'jeong-photos-remove', attr: { 'aria-label': t('photos.remove') } });
+				setIcon(remove, 'x');
+				remove.addEventListener('click', () => {
+					URL.revokeObjectURL(photo.url);
+					this.photos.splice(index, 1);
+					this.render();
+				});
+			}
 
 			// Drag a thumbnail onto another to reorder
 			item.addEventListener('dragstart', () => (this.dragFrom = index));

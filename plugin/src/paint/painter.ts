@@ -6,7 +6,7 @@ import { CloudImages } from './cloud-images';
 import { ComfyUI, type Workflow } from './comfyui';
 import { ComfyLauncher } from './comfy-launcher';
 import { kleinWorkflow } from './klein-workflow';
-import { storyText } from '../journal/story-text';
+import { storyText } from '../journal/entry-note';
 
 // Paints a picture for an entry that has no photos, on this computer unless a cloud painter is chosen in settings:
 // The language model describes one scene from the entry, and ComfyUI paints it in the style from settings.

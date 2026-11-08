@@ -20,7 +20,9 @@ export type MetricEvent =
 	| { event: 'llm'; task: string; model: string; promptTokens: number; outputTokens: number; ms: number; tokensPerSecond: number }
 	| { event: 'paint'; painter: string; model: string; sceneMs: number; unloadMs: number; paintMs: number; saveMs: number; ms: number }
 	| { event: 'quality'; kind: 'live' | 'final'; model: string; wer: number; referenceWords: number }
-	| { event: 'error'; where: string; message: string };
+	| { event: 'error'; where: string; message: string }
+	| { event: 'start'; unexpected: boolean }
+	| { event: 'close' };
 
 export type MetricRecord = MetricEvent & { ts: string; session: string; version: string; platform: string };
 

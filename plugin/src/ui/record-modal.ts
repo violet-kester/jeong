@@ -6,11 +6,13 @@ import { VoiceHorizon } from './voice-horizon';
 import { arrive, fade, leave } from './motion';
 import { checkWebGpu } from '../diagnostics/webgpu';
 import { deleteTemp, extensionFor, saveToTemp } from '../storage/temp-file';
-import { addRecording, writeEntry } from '../journal/entry-writer';
+import { addPhotos, addRecording, writeEntry } from '../journal/entry-writer';
 import { saveLoosePage } from '../journal/loose-pages';
-import { PhotoTray } from './photo-tray';
+import { PhotoTray, type Photo } from './photo-tray';
 import { openButtonRound } from './open-button';
-import { reviseStory, writeStory } from '../compose/write-story';
+import { addToStory, reviseStory, writeStory } from '../compose/write-story';
+import { storyText } from '../journal/entry-note';
+import { EntryEditModal } from './entry-edit-modal';
 import type { LanguageModel } from '../compose/language-model';
 import { paintMessage, storyMessage } from './story-messages';
 import { LiveTranscriber } from '../transcribe/live-transcriber';
@@ -83,7 +85,11 @@ export class RecordModal extends Modal {
 	/** The entry's title, at the top of the page once the story has named it. */
 	private title: HTMLElement | null = null;
 	private totalMs = 0;
-	private photosSaved = 0;
+	/** A recording is being saved, and the photos it took are being written with it. */
+	private saving = false;
+	private stopping: Promise<void> = Promise.resolve();
+	private photoWrites: Promise<void> = Promise.resolve();
+	private doneAction!: HTMLElement;
 	/** The left column: the date, then the photos, then (once saved, without photos) Illustrate. */
 	private side: HTMLElement | null = null;
 	private photos!: PhotoTray;
@@ -126,6 +132,7 @@ export class RecordModal extends Modal {
 		else {
 			side.createDiv({ cls: 'jeong-entry-label', text: t('record.photos') });
 			this.photos = new PhotoTray(side);
+			this.photos.onAdd = () => this.saveLatePhotos();
 		}
 
 		// Right: the page
@@ -154,6 +161,7 @@ export class RecordModal extends Modal {
 		const recordAction = control.createDiv({ cls: 'jeong-entry-action' });
 		this.button = recordAction.createEl('button', { cls: 'jeong-record-button' });
 		this.timer = recordAction.createDiv({ cls: 'jeong-record-timer', text: '0:00' });
+		this.addDoneAction(control);
 		this.setButton(false);
 		this.button.addEventListener('click', () => void this.toggle());
 		this.horizon = new VoiceHorizon(voice, this.button, this.openButton);
@@ -175,7 +183,7 @@ export class RecordModal extends Modal {
 		if (entry) {
 			this.savedNote = entry.note;
 			this.setButton(false);
-			arrive(this.openAction);
+			this.showSavedActions();
 			this.showStoryPane();
 			void this.fillStory(entry.note, true);
 		}
@@ -198,6 +206,7 @@ export class RecordModal extends Modal {
 		const recordAction = control.createDiv({ cls: 'jeong-entry-action' });
 		this.button = recordAction.createEl('button', { cls: 'jeong-record-button' });
 		this.timer = recordAction.createDiv({ cls: 'jeong-record-timer', text: '0:00' });
+		this.addDoneAction(control);
 
 		this.heading = main.createDiv({ cls: 'jeong-entry-heading', text: t('record.tapToStart') });
 		this.status = main.createDiv({ cls: 'jeong-record-status', text: t('record.voiceOnlyHint') });
@@ -207,8 +216,11 @@ export class RecordModal extends Modal {
 		this.partial = this.take.createSpan({ cls: 'jeong-transcript-partial' });
 		this.comparison = main.createDiv({ cls: 'jeong-comparison is-hidden' });
 
+		// The photos get their own row above the hairline, large enough to see
+		const stripHost = main.createDiv({ cls: 'jeong-voice-strip' });
 		const foot = main.createDiv({ cls: 'jeong-voice-foot' });
-		this.photos = new PhotoTray(foot, t('photos.addShort'));
+		this.photos = new PhotoTray(foot, t('photos.addShort'), stripHost);
+		this.photos.onAdd = () => this.saveLatePhotos();
 		const more = foot.createEl('details', { cls: 'jeong-record-more' });
 		const summary = more.createEl('summary');
 		setIcon(summary.createSpan({ cls: 'jeong-voice-pill-icon' }), 'align-left');
@@ -252,6 +264,32 @@ export class RecordModal extends Modal {
 		}
 	}
 
+	/** Done: closes the window, so finishing never feels like cancelling. Appears with Open entry. */
+	private addDoneAction(control: HTMLElement): void {
+		this.doneAction = control.createDiv({ cls: 'jeong-entry-action is-hidden' });
+		const button = this.doneAction.createEl('button', { cls: 'jeong-open-button', attr: { 'aria-label': t('record.done') } });
+		setIcon(button, 'check');
+		this.doneAction.createDiv({ cls: 'jeong-entry-action-label', text: t('record.done') });
+		button.addEventListener('click', () => this.close());
+	}
+
+	private showSavedActions(): void {
+		this.modalEl.addClass('has-entry');
+		arrive(this.openAction);
+		arrive(this.doneAction);
+	}
+
+	/** While the words and story are being written, the button rests and says so; Record more would start a second write. */
+	private setWriting(writing: boolean): void {
+		this.button.disabled = writing;
+		if (!writing) {
+			this.setButton(false);
+			return;
+		}
+		this.timer.addClass('is-label');
+		this.timer.setText(t('record.writingShort'));
+	}
+
 	private openSaved(): void {
 		if (!this.savedNote) return;
 		void this.app.workspace.getLeaf(false).openFile(this.savedNote);
@@ -276,7 +314,11 @@ export class RecordModal extends Modal {
 		this.horizon?.dispose();
 		window.cancelAnimationFrame(this.timerFrame);
 		this.recorder.release();
-		this.photos?.dispose();
+		// A save still under way needs its photos; they're let go once it's finished
+		void this.stopping
+			.then(() => this.photoWrites)
+			.catch(() => undefined)
+			.finally(() => this.photos?.dispose());
 		this.moonshine?.dispose();
 		this.whisper?.dispose();
 		this.contentEl.empty();
@@ -364,8 +406,16 @@ export class RecordModal extends Modal {
 	}
 
 	private async toggle(): Promise<void> {
-		if (this.recorder.analyser) await this.stop();
-		else await this.start();
+		if (!this.recorder.analyser) {
+			await this.start();
+			return;
+		}
+		this.saving = true;
+		this.stopping = this.stop().finally(() => {
+			this.saving = false;
+			this.saveLatePhotos();
+		});
+		await this.stopping;
 	}
 
 	private async start(): Promise<void> {
@@ -383,7 +433,9 @@ export class RecordModal extends Modal {
 			this.take = this.transcript.createSpan({ cls: 'jeong-take' });
 			this.take.appendChild(this.partial);
 		}
+		this.modalEl.removeClass('has-entry');
 		void leave(this.openAction);
+		void leave(this.doneAction);
 		this.horizon?.start(this.recorder.analyser);
 		if (!this.transcriber && !this.onPhone) this.startTranscribers();
 		await this.transcriber?.listen(this.recorder.stream);
@@ -422,6 +474,8 @@ export class RecordModal extends Modal {
 			return;
 		}
 
+		if (this.savedNote) this.setWriting(true);
+
 		// Keep a safe copy first, outside the vault, so nothing is lost if anything below fails
 		const tempPath = await this.saveTemp(recording.blob, recording.mimeType);
 
@@ -437,14 +491,15 @@ export class RecordModal extends Modal {
 		}
 		await liveDone;
 		this.logLive();
-		this.button.disabled = false;
 		if (!result) {
+			this.setWriting(false);
 			this.status.setText(t('record.keptInTemp'));
 			return;
 		}
 		this.showFinal(result.text, result.ms, result.audioMs);
 
 		if (this.options.test) {
+			this.setWriting(false);
 			this.status.setText(t('record.saved'));
 			return;
 		}
@@ -456,6 +511,7 @@ export class RecordModal extends Modal {
 	/** Record more: adds this recording to the entry already saved, then writes the story again from everything. */
 	private async addToEntry(note: TFile, recording: Recording, result: Transcript, tempPath: string | null): Promise<void> {
 		this.status.setText(t('record.writing'));
+		const photos = this.photos.claim();
 		try {
 			await addRecording(this.app, note, {
 				recording: recording.blob,
@@ -466,20 +522,22 @@ export class RecordModal extends Modal {
 				segments: result.segments ?? [],
 				engine: `jeong-plugin ${this.metrics.version} · ${shortName(this.models.final)}`,
 				language: this.language,
-				photos: this.photoFiles().slice(this.photosSaved),
+				photos: photoData(photos),
 			});
-			this.photosSaved = this.photos.photos.length;
 			if (tempPath) await deleteTemp(tempPath);
 			this.status.setText(t('record.savedEntry'));
 			this.showSaved(note);
+			this.setWriting(true);
 			this.showStoryPane();
-			const written = await writeStory(this.app, this.options.llm, this.metrics, note, (progress) => this.status.setText(storyMessage(progress)));
+			const written = await addToStory(this.app, this.options.llm, this.metrics, note, result.text, (progress) => this.status.setText(storyMessage(progress)));
 			await this.fillStory(note, written);
+			this.setWriting(false);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			console.error('Jeong: could not add the recording', error);
+			this.photos.release(photos);
 			this.status.setText(t('record.entryFailed'));
-			this.button.disabled = false;
+			this.setWriting(false);
 			this.metrics.log({ event: 'error', where: 'add-recording', message });
 		}
 	}
@@ -502,6 +560,7 @@ export class RecordModal extends Modal {
 	private async saveEntry(recording: Recording, result: Transcript, tempPath: string | null): Promise<void> {
 		this.status.setText(t('record.writing'));
 		const started = performance.now();
+		const photos = this.photos.claim();
 		try {
 			const note = await writeEntry(this.app, this.options.journalFolder, {
 				recording: recording.blob,
@@ -512,7 +571,7 @@ export class RecordModal extends Modal {
 				segments: result.segments ?? [],
 				engine: `jeong-plugin ${this.metrics.version} · ${shortName(this.models.final)}`,
 				language: this.language,
-				photos: this.photoFiles(),
+				photos: photoData(photos),
 			});
 			this.metrics.log({
 				event: 'entry_saved',
@@ -521,27 +580,45 @@ export class RecordModal extends Modal {
 				ms: Math.round(performance.now() - started),
 			});
 			if (tempPath) await deleteTemp(tempPath);
-			this.photosSaved = this.photos.photos.length;
 			this.status.setText(t('record.savedEntry'));
 			this.showSaved(note);
 			// Turn the transcript into a story, in the background; the entry is already safe
+			this.setWriting(true);
 			this.showStoryPane();
 			const written = await writeStory(this.app, this.options.llm, this.metrics, note, (progress) => this.status.setText(storyMessage(progress)));
 			await this.fillStory(note, written);
+			this.setWriting(false);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			console.error('Jeong: could not write the entry', error);
+			this.photos.release(photos);
 			this.status.setText(t('record.entryFailed'));
+			this.setWriting(false);
 			this.metrics.log({ event: 'error', where: 'write-entry', message });
 		}
 	}
 
-	private photoFiles() {
-		return this.photos.photos.map(({ file }) => ({ name: file.name, type: file.type, data: file }));
+	/** Photos added once there's a saved entry go straight into it, so closing the window can't lose them. */
+	private saveLatePhotos(): void {
+		const note = this.savedNote;
+		if (!note || this.saving) return;
+		const photos = this.photos.claim();
+		if (!photos.length) return;
+		this.photoWrites = this.photoWrites.then(async () => {
+			try {
+				await addPhotos(this.app, note, photoData(photos));
+			} catch (error) {
+				console.error('Jeong: could not add the photos', error);
+				this.photos.release(photos);
+				this.status.setText(t('record.photosFailed'));
+				this.metrics.log({ event: 'error', where: 'add-photos', message: error instanceof Error ? error.message : String(error) });
+			}
+		});
 	}
 
 	/** On a phone: save the recording to Loose pages, to be written up on a computer later. */
 	private async saveLoose(recording: Recording): Promise<void> {
+		const photos = this.photos.claim();
 		try {
 			const note = await saveLoosePage(this.app, this.options.journalFolder, {
 				recording: recording.blob,
@@ -549,13 +626,15 @@ export class RecordModal extends Modal {
 				durationMs: recording.durationMs,
 				startedAt: this.startedAt,
 				language: this.language,
-				photos: this.photoFiles(),
+				// Record more on a phone starts a new loose page: only the photos not saved yet go with it
+				photos: photoData(photos),
 			});
 			this.status.setText(t('record.savedLoose'));
 			this.showSaved(note);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			console.error('Jeong: could not save the recording', error);
+			this.photos.release(photos);
 			this.status.setText(t('record.saveFailed'));
 			this.button.disabled = false;
 			this.metrics.log({ event: 'error', where: 'save-loose', message });
@@ -613,7 +692,9 @@ export class RecordModal extends Modal {
 		this.heading.addClass('is-saved');
 		this.button.disabled = false;
 		this.setButton(false);
-		arrive(this.openAction);
+		this.showSavedActions();
+		this.saving = false;
+		this.saveLatePhotos();
 		window.requestAnimationFrame(() => this.horizon?.draw());
 		// Illustrate, under the photos (once; Record more keeps the same one)
 		if (this.side && !this.side.querySelector('.jeong-entry-painting')) this.illustration(this.side, note);
@@ -649,6 +730,10 @@ export class RecordModal extends Modal {
 		for (const paragraph of storyText(content).split(/\n\s*\n/)) {
 			if (paragraph.trim()) body.createEl('p', { text: paragraph.trim() });
 		}
+		const edit = pane.createEl('button', { cls: 'jeong-open-button is-pill jeong-entry-story-edit' });
+		setIcon(edit.createSpan({ cls: 'jeong-open-button-icon' }), 'square-pen');
+		edit.createSpan({ text: t('story.edit') });
+		edit.addEventListener('click', () => new EntryEditModal(this.app, note, () => void this.fillStory(note, true)).open());
 	}
 
 	/**
@@ -781,14 +866,9 @@ export class RecordModal extends Modal {
 	}
 }
 
-/** The story from an entry note: without the frontmatter, players, photos, links line, or notes. */
-function storyText(content: string): string {
-	return content
-		.replace(/^---\n[\s\S]*?\n---\n/, '')
-		.split('\n')
-		.filter((line) => !/^\s*(!\[\[|\*\[\[|>)/.test(line))
-		.join('\n')
-		.trim();
+/** Photos in the shape the journal saves them. */
+function photoData(photos: Photo[]) {
+	return photos.map(({ file }) => ({ name: file.name, type: file.type, data: file }));
 }
 
 /** "onnx-community/whisper-large-v3-turbo" → "whisper-large-v3-turbo" */

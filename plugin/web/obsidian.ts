@@ -97,6 +97,9 @@ Element.prototype.setAttr = function (this: Element, name: string, value: string
 	if (value === null || value === false) this.removeAttribute(name);
 	else this.setAttribute(name, value === true ? '' : String(value));
 };
+HTMLElement.prototype.toggle = function (this: HTMLElement, show: boolean) {
+	this.style.display = show ? '' : 'none';
+};
 HTMLElement.prototype.hide = function (this: HTMLElement) {
 	this.style.display = 'none';
 };

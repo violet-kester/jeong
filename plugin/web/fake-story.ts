@@ -3,11 +3,27 @@
 
 import type { TFile } from './obsidian';
 import { applyStory } from '../src/journal/apply-story';
+import { storyIsEdited, storyText } from '../src/journal/entry-note';
 import type { StoryProgress } from '../src/compose/write-story';
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
+const readNote = (app: never, note: TFile) => (app as { vault: { read: (file: TFile) => Promise<string> } }).vault.read(note);
+
+/** Demo only: the real rule for Record more, with a pretend story of the new words. */
+export async function addToStory(app: never, ollama: unknown, metrics: unknown, note: TFile, newWords: string, onProgress: (progress: StoryProgress) => void): Promise<boolean> {
+	const content = await readNote(app, note);
+	if (!storyIsEdited(content)) return writeStory(app, ollama, metrics, note, onProgress);
+	await applyStory(app, note as never, { story: `${storyText(content)}\n\nAdded: ${newWords}`, aiDraft: '', title: '', summary: '', flagged: [] }, 'demo');
+	onProgress('done');
+	return true;
+}
+
 export async function writeStory(app: never, _ollama: unknown, _metrics: unknown, note: TFile, onProgress: (progress: StoryProgress) => void): Promise<boolean> {
+	if (storyIsEdited(await readNote(app, note))) {
+		onProgress('kept-edits');
+		return false;
+	}
 	for (const step of ['story', 'check', 'summary'] as const) {
 		onProgress(step);
 		await wait(900);

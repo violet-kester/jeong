@@ -2,6 +2,7 @@ import { App, TFile, TFolder, moment, normalizePath, stringifyYaml } from 'obsid
 import type { Segment } from '../transcribe/messages';
 import { extensionFor } from '../storage/temp-file';
 import { photoExtension } from '../ui/photo-tray';
+import { parseEntryNote, serializeEntryNote } from './entry-note';
 import { t } from '../i18n';
 
 // Writes a finished recording into the journal as an entry folder:
@@ -16,6 +17,12 @@ import { t } from '../i18n';
 // Folder and file names sort by date, read well in a file explorer, and are safe on
 // Windows, macOS, and USB drives. Month names follow Obsidian's display language.
 
+export interface EntryPhoto {
+	name: string;
+	type: string;
+	data: Blob;
+}
+
 export interface NewEntry {
 	recording: Blob;
 	mimeType: string;
@@ -28,7 +35,7 @@ export interface NewEntry {
 	/** Where it was recorded, if known (phone recordings bring their own); otherwise this computer's. */
 	timezone?: string;
 	/** Photos added to the entry, in order; the first is the main photo. Saved as the original files. */
-	photos?: { name: string; type: string; data: Blob }[];
+	photos?: EntryPhoto[];
 }
 
 /** Saves the entry and returns its main note. */
@@ -51,12 +58,7 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 	const recordingName = `${stamp} recording.${extensionFor(entry.mimeType)}`;
 	await app.vault.createBinary(`${folder}/${recordingName}`, await entry.recording.arrayBuffer());
 
-	const photoNames: string[] = [];
-	for (const [i, photo] of (entry.photos ?? []).entries()) {
-		const photoName = `${stamp} photo ${i + 1}.${photoExtension(photo)}`;
-		await app.vault.createBinary(`${folder}/${photoName}`, await photo.data.arrayBuffer());
-		photoNames.push(photoName);
-	}
+	const photoNames = await savePhotos(app, folder, stamp, entry.photos ?? []);
 
 	const duration = formatTime(entry.durationMs / 1000);
 	const name = safeName(title);
@@ -110,12 +112,6 @@ export async function addRecording(app: App, note: TFile, take: NewEntry): Promi
 
 	const recordingName = freeName(app, folder.path, `${stamp} recording`, extensionFor(take.mimeType));
 	await app.vault.createBinary(`${folder.path}/${recordingName}`, await take.recording.arrayBuffer());
-	const photoNames: string[] = [];
-	for (const photo of take.photos ?? []) {
-		const photoName = freeName(app, folder.path, `${stamp} photo ${photoNames.length + 1}`, photoExtension(photo));
-		await app.vault.createBinary(`${folder.path}/${photoName}`, await photo.data.arrayBuffer());
-		photoNames.push(photoName);
-	}
 
 	// The transcript carries on, with this recording's player and times counted from where the last one ended
 	const transcript = folder.children.find(
@@ -128,21 +124,57 @@ export async function addRecording(app: App, note: TFile, take: NewEntry): Promi
 		await app.vault.process(transcript, (content) => `${content.trimEnd()}\n\n${embed(folder.path, recordingName)}\n\n${words}\n`);
 	}
 
-	// The entry: another player under the first, the new photos under the story
+	// The entry: another player under the first
 	await app.vault.process(note, (content) => {
-		const lines = content.split('\n');
-		let last = -1;
-		lines.forEach((line, i) => {
-			if (/^!\[\[.*recording\.[a-z0-9]+\]\]$/i.test(line.trim())) last = i;
-		});
-		if (last >= 0) lines.splice(last + 1, 0, embed(folder.path, recordingName));
-		return lines.join('\n').trimEnd() + '\n' + photoBlock(folder.path, photoNames);
+		const parsed = parseEntryNote(content);
+		return serializeEntryNote({ ...parsed, players: [...parsed.players, embed(folder.path, recordingName)] });
 	});
 	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
 		fm.recordings = [...listOf(fm.recordings), recordingName];
-		if (photoNames.length) fm.photos = [...listOf(fm.photos), ...photoNames];
 		fm.duration = formatTime(offset + take.durationMs / 1000);
 	});
+	await addPhotos(app, note, take.photos ?? [], take.startedAt);
+}
+
+/** Saves photos into a folder as "<stamp> photo N", numbered from `firstNumber`, and returns their file names. */
+export async function savePhotos(app: App, folder: string, stamp: string, photos: EntryPhoto[], firstNumber = 1): Promise<string[]> {
+	const names: string[] = [];
+	for (const [i, photo] of photos.entries()) {
+		const name = freeName(app, folder, `${stamp} photo ${firstNumber + i}`, photoExtension(photo));
+		await app.vault.createBinary(`${folder}/${name}`, await photo.data.arrayBuffer());
+		names.push(name);
+	}
+	return names;
+}
+
+/** Adds photos to a saved entry or loose page: the files beside it, shown under its text, and listed in its frontmatter. */
+export async function addPhotos(app: App, note: TFile, photos: EntryPhoto[], when: Date = new Date()): Promise<void> {
+	if (!photos.length) return;
+	const folder = note.parent;
+	if (!folder) throw new Error('The entry has no folder');
+	const existing = listOf(app.metadataCache.getFileCache(note)?.frontmatter?.photos);
+	const names = await savePhotos(app, folder.path, moment(when).format('YYYY-MM-DD HHmm'), photos, existing.length + 1);
+	await app.vault.process(note, (content) => content.trimEnd() + '\n' + photoBlock(folder.path, names));
+	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
+		fm.photos = [...listOf(fm.photos), ...names];
+	});
+}
+
+/** Makes `names` the entry's photos, in that order, in its frontmatter and body; photos left out go to the trash. */
+export async function setPhotos(app: App, note: TFile, names: string[]): Promise<void> {
+	const folder = note.parent;
+	if (!folder) throw new Error('The entry has no folder');
+	let before: string[] = [];
+	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
+		before = listOf(fm.photos);
+		if (names.length) fm.photos = names;
+		else delete fm.photos;
+	});
+	await app.vault.process(note, (content) => serializeEntryNote({ ...parseEntryNote(content), photos: names.map((name) => embed(folder.path, name)) }));
+	for (const name of before.filter((photo) => !names.includes(photo))) {
+		const file = app.vault.getAbstractFileByPath(normalizePath(`${folder.path}/${name}`));
+		if (file instanceof TFile) await app.fileManager.trashFile(file);
+	}
 }
 
 /** A frontmatter list as names (empty if it isn't a list). */

@@ -3,6 +3,8 @@ import type JeongPlugin from './main';
 import { INKS, type InkName } from './paint/ink';
 import type { StoryProvider } from './compose/language-model';
 import { FolderSuggest } from './ui/folder-suggest';
+import { PasswordModal } from './ui/password-modal';
+import type { LockVerifier } from './privacy/journal-lock';
 import { t } from './i18n';
 
 export interface JeongSettings {
@@ -43,6 +45,8 @@ export interface JeongSettings {
 	paintWorkflow: string;
 	/** The one ink color paintings are shown in (they're painted in black). */
 	paintInk: InkName;
+	/** The screen lock: a salted check for the password, never the password itself. */
+	lock: LockVerifier | null;
 }
 
 export type JeongTheme = 'obsidian' | 'light' | 'dark';
@@ -115,6 +119,7 @@ export const DEFAULT_SETTINGS: JeongSettings = {
 	paintStyle: PAINT_STYLE,
 	paintWorkflow: '',
 	paintInk: 'cinnabar',
+	lock: null,
 };
 
 export class JeongSettingTab extends PluginSettingTab {
@@ -214,6 +219,8 @@ export class JeongSettingTab extends PluginSettingTab {
 			this.textSetting('openaiModel', t('settings.cloudModel.name'), t('settings.openaiModel.desc'));
 		}
 
+		this.lockSettings();
+
 		new Setting(containerEl).setName(t('settings.paint.heading')).setHeading();
 
 		new Setting(containerEl)
@@ -296,6 +303,40 @@ export class JeongSettingTab extends PluginSettingTab {
 						}),
 				);
 		}
+	}
+
+	/** The screen lock: choose a password, and change or remove it after giving the current one. */
+	private lockSettings(): void {
+		const { lock } = this.plugin;
+		const choose = () =>
+			new PasswordModal(this.app, t('lock.choose'), true, async (password) => {
+				await lock.setPassword(password);
+				this.display();
+				return true;
+			}).open();
+		const thenDo = (heading: string, action: () => void | Promise<void>) =>
+			new PasswordModal(this.app, heading, false, async (password) => {
+				if (!(await lock.check(password))) return false;
+				await action();
+				return true;
+			}).open();
+
+		new Setting(this.containerEl).setName(t('settings.lock.heading')).setHeading();
+		const setting = new Setting(this.containerEl).setName(t('settings.lock.name')).setDesc(t('settings.lock.desc'));
+		if (!lock.enabled) {
+			setting.addButton((button) => button.setButtonText(t('settings.lock.set')).onClick(choose));
+			return;
+		}
+		setting
+			.addButton((button) => button.setButtonText(t('settings.lock.change')).onClick(() => thenDo(t('lock.current'), choose)))
+			.addButton((button) =>
+				button.setButtonText(t('settings.lock.remove')).onClick(() =>
+					thenDo(t('lock.current'), async () => {
+						await lock.remove();
+						this.display();
+					}),
+				),
+			);
 	}
 
 	/** A text setting that falls back to its default when left empty. */

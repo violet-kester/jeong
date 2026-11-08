@@ -8,6 +8,7 @@ const STORY_RULES = `You turn a spoken journal recording into a written journal 
 
 Rules:
 - Write in the first person, as the speaker, in the same language as the transcript. If they mix languages, keep that.
+- You are the speaker, not someone describing them. Never say "the narrator", "the speaker", "the author", or "the user".
 - Keep their voice: their own words, phrases, humor, slang, and rhythm. Prefer their exact wording.
 - Never add facts, feelings, names, places, or conclusions that are not in the transcript.
 - Remove filler words (um, uh, like), false starts, and words said twice by accident.
@@ -109,6 +110,27 @@ export async function composeEntry(
 		onStep('rewrite', rewrite);
 		story = rewrite.content || story;
 		flagged = await check(llm, transcript, story, contextTokens, onStep);
+	}
+	// Small models sometimes tell the story from outside; ask once more for "I", then fall back to their own words
+	if (toldFromOutside(story, transcript)) {
+		onStep('rewrite');
+		const firstPerson = await llm.chat(
+			[
+				{ role: 'system', content: STORY_RULES },
+				{ role: 'user', content: `TRANSCRIPT:\n${transcript}` },
+				{ role: 'assistant', content: story },
+				{ role: 'user', content: 'Rewrite the entry as the speaker themselves, using "I" and "my". Keep the same words and facts.' },
+			],
+			{ contextTokens },
+		);
+		onStep('rewrite', firstPerson);
+		story = firstPerson.content;
+		if (story && !toldFromOutside(story, transcript)) {
+			flagged = await check(llm, transcript, story, contextTokens, onStep);
+		} else {
+			story = ownWords(transcript);
+			flagged = [];
+		}
 	}
 	// Far longer than what was said, even after the check: something was made up that the check missed
 	if (countWords(story) > maxStoryWords(words)) {
@@ -244,6 +266,16 @@ function parse<T>(json: string, fallback: T): T {
 	} catch {
 		return fallback;
 	}
+}
+
+/**
+ * Whether the story describes the speaker instead of speaking as them. Wording they used themselves doesn't count
+ * ("I met the author"). The "I" check is for English; other languages rely on the labels and the rules.
+ */
+function toldFromOutside(story: string, transcript: string): boolean {
+	const label = /\bthe (narrator|speaker|author|user)\b/i;
+	const firstPerson = /\b(I|I'm|I've|I'd|I'll|my|me|mine|myself)\b/;
+	return (label.test(story) && !label.test(transcript)) || (firstPerson.test(transcript) && !firstPerson.test(story));
 }
 
 function countWords(text: string): number {

@@ -1,8 +1,9 @@
 import { App, Component, MarkdownRenderer, Modal, Platform, moment, setIcon } from 'obsidian';
 import type { EntryInfo } from '../journal/entries';
 import { findTranscript } from '../journal/apply-story';
-import { storyText } from '../journal/story-text';
+import { storyText } from '../journal/entry-note';
 import { applyInk, type InkName } from '../paint/ink';
+import { EntryEditModal } from './entry-edit-modal';
 import { t } from '../i18n';
 
 // Reading an entry from the timeline: its picture, when it was, its title, and the story itself, with a way
@@ -54,6 +55,8 @@ export class StoryModal extends Modal {
 		}
 
 		const actions = page.createDiv({ cls: 'jeong-story-actions' });
+		// By hand, on a phone too: the words, and the photos
+		this.button(actions, 'square-pen', t('story.edit'), () => new EntryEditModal(this.app, entry.file).open());
 		// Two different things, so two buttons: more words join the story; spoken changes are applied to it
 		const record = this.record;
 		if (record && entry.status !== 'recorded' && !Platform.isMobile) {

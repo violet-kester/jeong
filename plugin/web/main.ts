@@ -13,6 +13,7 @@ import { Metrics } from '../src/metrics/metrics';
 import { Ollama } from '../src/compose/ollama';
 import { Painter } from '../src/paint/painter';
 import { addIcons } from '../src/ui/icons';
+import { JournalLock, makeVerifier } from '../src/privacy/journal-lock';
 import mark from '../../jeong-logo-card.svg';
 
 declare const JEONG_DEMO: boolean;
@@ -82,10 +83,15 @@ async function open(handle: FileSystemDirectoryHandle, name: string): Promise<vo
 	);
 	// In the browser there's no Obsidian keychain, so only the local, keyless models are offered
 	const painter = new Painter(app, ollama, metrics, () => settings, () => '');
+	// The demo can start locked (?demo&lock=word), the way a restored tab does
+	const demoPassword = JEONG_DEMO ? params.get('lock') : null;
+	if (demoPassword) settings.lock = await makeVerifier(demoPassword);
+	const lock = new JournalLock(() => settings.lock, async (verifier) => void (settings.lock = verifier));
 	const plugin = {
 		app,
 		settings,
 		painter,
+		lock,
 		openRecorder: (entry?: RecordModalOptions['entry']) =>
 			new RecordModal(app, metrics, { liveMode: settings.liveMode, journalFolder: settings.journalFolder, llm: ollama, painter, paintInk: settings.paintInk, entry }).open(),
 		showTheme: (theme: JeongTheme | null) => {

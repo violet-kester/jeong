@@ -2,10 +2,10 @@ import { App, TFile } from 'obsidian';
 import { composeEntry, reviseEntry, type ComposedEntry, type ComposeStep } from './composer';
 import type { ChatResult, LanguageModel } from './language-model';
 import type { Metrics } from '../metrics/metrics';
-import { applyStory, findTranscript, transcriptText } from '../journal/apply-story';
-import { storyText } from '../journal/story-text';
+import { applyStory, findTranscript } from '../journal/apply-story';
+import { storyIsEdited, storyText, transcriptText } from '../journal/entry-note';
 
-export type StoryProgress = ComposeStep | 'not-ready' | 'done' | 'failed';
+export type StoryProgress = ComposeStep | 'not-ready' | 'done' | 'failed' | 'kept-edits';
 
 /**
  * Writes the story, title, and summary for an entry from its transcript.md, and saves them
@@ -18,7 +18,32 @@ export async function writeStory(
 	note: TFile,
 	onProgress: (progress: StoryProgress) => void,
 ): Promise<boolean> {
+	if (storyIsEdited(await app.vault.read(note))) {
+		onProgress('kept-edits');
+		return false;
+	}
 	return compose(app, llm, metrics, note, onProgress, (transcript, onStep) => composeEntry(llm, transcript, onStep));
+}
+
+/**
+ * After Record more. A story nobody has touched is written again from everything said; one the person has changed
+ * stays exactly as it is, with a story of just the new words added beneath it.
+ */
+export async function addToStory(
+	app: App,
+	llm: LanguageModel,
+	metrics: Metrics,
+	note: TFile,
+	newWords: string,
+	onProgress: (progress: StoryProgress) => void,
+): Promise<boolean> {
+	const content = await app.vault.read(note);
+	if (!storyIsEdited(content)) return writeStory(app, llm, metrics, note, onProgress);
+	const kept = storyText(content);
+	return compose(app, llm, metrics, note, onProgress, async (_transcript, onStep) => {
+		const added = await composeEntry(llm, newWords, onStep);
+		return { ...added, story: `${kept}\n\n${added.story}`, aiDraft: '', title: '', summary: '' };
+	});
 }
 
 /**

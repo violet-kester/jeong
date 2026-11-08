@@ -1,8 +1,7 @@
 import { App, TFile, TFolder, moment, normalizePath, stringifyYaml } from 'obsidian';
 import { extensionFor } from '../storage/temp-file';
 import { t } from '../i18n';
-import { photoExtension } from '../ui/photo-tray';
-import { embed, photoBlock } from './entry-writer';
+import { embed, photoBlock, savePhotos, type EntryPhoto } from './entry-writer';
 
 // Quick captures that haven't become entries yet, for example recordings made on a phone,
 // which can't run the transcription and story models. They're saved as:
@@ -18,7 +17,7 @@ export interface LooseRecording {
 	durationMs: number;
 	startedAt: Date;
 	language: string;
-	photos?: { name: string; type: string; data: Blob }[];
+	photos?: EntryPhoto[];
 }
 
 export async function saveLoosePage(app: App, journalFolder: string, capture: LooseRecording): Promise<TFile> {
@@ -33,12 +32,7 @@ export async function saveLoosePage(app: App, journalFolder: string, capture: Lo
 	const recordingName = `${base} recording.${extensionFor(capture.mimeType)}`;
 	await app.vault.createBinary(`${folder}/${recordingName}`, await capture.recording.arrayBuffer());
 
-	const photoNames: string[] = [];
-	for (const [i, photo] of (capture.photos ?? []).entries()) {
-		const photoName = `${base} photo ${i + 1}.${photoExtension(photo)}`;
-		await app.vault.createBinary(`${folder}/${photoName}`, await photo.data.arrayBuffer());
-		photoNames.push(photoName);
-	}
+	const photoNames = await savePhotos(app, folder, base, capture.photos ?? []);
 
 	const seconds = Math.floor(capture.durationMs / 1000);
 	const fields = {

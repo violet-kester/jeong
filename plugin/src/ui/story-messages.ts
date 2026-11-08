@@ -17,6 +17,8 @@ export function storyMessage(progress: StoryProgress): string {
 			return t('story.notReady');
 		case 'done':
 			return t('story.done');
+		case 'kept-edits':
+			return t('story.keptEdits');
 		case 'failed':
 			return t('story.failed');
 	}

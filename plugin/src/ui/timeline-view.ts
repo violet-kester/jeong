@@ -1,4 +1,4 @@
-import { ItemView, Menu, Notice, Platform, TFile, WorkspaceLeaf, debounce, moment, setIcon } from 'obsidian';
+import { ItemView, Menu, Notice, Platform, TFile, WorkspaceLeaf, debounce, moment, normalizePath, setIcon } from 'obsidian';
 import type JeongPlugin from '../main';
 import { t } from '../i18n';
 import { deleteEntry, listEntries, setHidden, type EntryInfo } from '../journal/entries';
@@ -8,8 +8,9 @@ import { arrive, leave } from './motion';
 import { openButtonPill } from './open-button';
 import { paintMessage } from './story-messages';
 import { brushReveal } from '../paint/brush-reveal';
-import { storyText } from '../journal/story-text';
+import { storyText } from '../journal/entry-note';
 import { StoryModal } from './story-modal';
+import { PasswordModal } from './password-modal';
 import { applyInk } from '../paint/ink';
 import { inkInset } from '../paint/ink-bounds';
 import { moonPhase } from './moon';
@@ -25,6 +26,7 @@ export const TIMELINE_VIEW = 'jeong-timeline';
 
 const NUMERALS_HEIGHT = 170;
 const PHOTO_TURN_MS = 4000; // how long each picture shows before the next one fades in
+const PHOTO_FADE_MS = 3300; // the last picture goes once the next has faded in over it (styles.css: --jeong-drift plus the longest --jeong-turn-delay)
 const MIN_HEIGHT = 420; // the numerals plus a row of cards above and below the line
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 12;
@@ -197,6 +199,11 @@ export class TimelineView extends ItemView {
 		setIcon(record.createSpan({ cls: 'jeong-timeline-record-icon' }), 'mic');
 		record.createSpan({ text: t('timeline.record') });
 		record.addEventListener('click', () => this.plugin.openRecorder());
+		// Quiet, in the corner, and only once there's a lock or something hidden
+		this.privacy = root.createEl('button', { cls: 'jeong-timeline-privacy', attr: { 'aria-label': t('lock.menu') } });
+		setIcon(this.privacy, 'eye-off');
+		this.privacy.addEventListener('click', (e) => this.privacyMenu(e));
+		this.privacy.hide();
 
 		this.preview = root.createDiv({ cls: 'jeong-timeline-card' });
 		this.preview.hide();
@@ -209,12 +216,27 @@ export class TimelineView extends ItemView {
 		this.registerDomEvent(this.scroller, 'scroll', this.markNight, { passive: true });
 		this.cyclePhotos();
 
-		// Redraw when entries change
-		this.registerEvent(this.app.metadataCache.on('changed', this.refresh));
-		this.registerEvent(this.app.vault.on('delete', this.refresh));
-		this.registerEvent(this.app.vault.on('rename', this.refresh));
+		// Redraw when entries change, and only then: a redraw loads every picture again, and sync can touch other notes all day
+		this.registerEvent(
+			this.app.metadataCache.on('changed', (file) => {
+				if (this.inJournal(file.path)) this.refresh();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				if (this.inJournal(file.path)) this.refresh();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				if (this.inJournal(file.path) || this.inJournal(oldPath)) this.refresh();
+			}),
+		);
 		// A card shows its brush moving while its picture is painted
 		this.register(this.plugin.painter.onChange(this.refresh));
+		// Locking, unlocking, and showing hidden entries all change what may be on screen
+		this.register(this.plugin.lock.onChange(() => (this.gate ? this.goToToday() : this.redraw())));
+		this.registerDomEvent(document, 'visibilitychange', () => this.plugin.lock.noteVisibility(document.hidden));
 		this.applyInk();
 
 		this.goToToday();
@@ -239,6 +261,13 @@ export class TimelineView extends ItemView {
 	}
 
 	private refresh = debounce(() => this.redraw(), 300, true);
+	private gate: HTMLElement | null = null;
+	private privacy!: HTMLElement;
+
+	private inJournal(path: string): boolean {
+		const folder = normalizePath(this.plugin.settings.journalFolder);
+		return folder === '/' || path.startsWith(`${folder}/`);
+	}
 
 	/** Shows the year, month, or week with today in it, with now in the middle. */
 	goToToday(): void {
@@ -274,6 +303,24 @@ export class TimelineView extends ItemView {
 		window.cancelAnimationFrame(this.zoomFrame);
 		this.zoomFrame = 0;
 		this.showPeriod(middle, middle);
+		if (!at) this.landOnFirstEntry();
+	}
+
+	/**
+	 * Opens the period where its entries begin, with the earliest card just inside the left edge and in view.
+	 * A period with no entries stays as showPeriod() left it: on today if it's in there, or the date you were on.
+	 */
+	private landOnFirstEntry(): void {
+		const when = (c: DrawnCard) => `${c.entry.date} ${timeOf(c.entry)}`;
+		const first = this.cards.reduce<DrawnCard | undefined>((earliest, c) => (!earliest || when(c) < when(earliest) ? c : earliest), undefined);
+		if (!first) return;
+		const margin = Math.min(48, this.scroller.clientWidth * 0.12);
+		this.scroller.scrollLeft = Math.max(0, this.dayX(first.entry) - this.layout.stemOffset - margin);
+		const viewTop = this.scroller.scrollTop + this.top + NUMERALS_HEIGHT;
+		const viewBottom = this.scroller.scrollTop + this.scroller.clientHeight;
+		const bottom = first.top + first.height;
+		if (first.top < viewTop) this.scroller.scrollTop -= viewTop - first.top;
+		else if (bottom > viewBottom) this.scroller.scrollTop += Math.min(bottom - viewBottom + this.layout.gap, first.top - viewTop);
 	}
 
 	/** Shows the year, month, or week that `date` falls in; `focus`, if it's in that period, goes in the middle. */
@@ -397,7 +444,7 @@ export class TimelineView extends ItemView {
 		if (this.scale === 'year') {
 			const select = slot.createEl('select', { attr: { 'aria-label': t('timeline.pickYear') } });
 			const now = moment().year();
-			const first = Math.min(this.start.year(), ...listEntries(this.app, this.plugin.settings.journalFolder).map((e) => Number(e.date.slice(0, 4))), now);
+			const first = Math.min(this.start.year(), ...this.entries().map((e) => Number(e.date.slice(0, 4))), now);
 			for (let year = Math.max(this.start.year(), now) + 1; year >= first; year--) select.createEl('option', { text: String(year), attr: { value: String(year) } });
 			select.value = String(this.start.year());
 			select.addEventListener('change', () => this.showPeriod(moment({ year: Number(select.value) })));
@@ -422,10 +469,65 @@ export class TimelineView extends ItemView {
 	}
 
 	/** Draws the period shown: its columns, the line, now, and a card for every entry. place() puts them where they go. */
+	/** Every entry the timeline may show: this is the one way it gets them, so a locked screen has none to show. */
+	private entries(): EntryInfo[] {
+		const { lock } = this.plugin;
+		return lock.locked ? [] : listEntries(this.app, this.plugin.settings.journalFolder, { includeHidden: lock.showHidden });
+	}
+
+	/** The locked screen, over everything, until the password is given. */
+	private showGate(): void {
+		this.preview.hide();
+		this.track.empty();
+		if (this.gate) return;
+		const gate = (this.gate = (this.scroller.parentElement ?? this.contentEl).createDiv({ cls: 'jeong-timeline-lock' }));
+		const form = gate.createEl('form', { cls: 'jeong-password-form' });
+		setIcon(form.createDiv({ cls: 'jeong-timeline-lock-icon' }), 'lock');
+		form.createEl('h2', { text: t('lock.heading') });
+		const input = form.createEl('input', { type: 'password', attr: { 'aria-label': t('lock.password'), placeholder: t('lock.password'), autocomplete: 'current-password' } });
+		const error = form.createDiv({ cls: 'jeong-password-error' });
+		const submit = form.createEl('button', { cls: 'jeong-open-button is-pill', text: t('lock.open'), attr: { type: 'submit' } });
+		form.addEventListener('submit', (e) => {
+			e.preventDefault();
+			if (!input.value) return;
+			submit.disabled = true;
+			void this.plugin.lock.unlock(input.value).then((opened) => {
+				submit.disabled = false;
+				if (opened) return;
+				error.setText(t('lock.wrong'));
+				input.value = '';
+				input.focus();
+			});
+		});
+		window.setTimeout(() => input.focus(), 0);
+	}
+
+	/** Show or put away hidden entries, and lock now. Only there when there's something for it to do. */
+	private privacyMenu(e: MouseEvent): void {
+		const { lock } = this.plugin;
+		const show = () => {
+			if (!lock.enabled) return lock.setShowHidden(true);
+			new PasswordModal(this.app, t('lock.showHidden'), false, async (password) => {
+				if (!(await lock.check(password))) return false;
+				lock.setShowHidden(true);
+				return true;
+			}).open();
+		};
+		const menu = new Menu();
+		if (lock.showHidden) menu.addItem((item) => item.setTitle(t('entry.putAway')).setIcon('eye-off').onClick(() => lock.setShowHidden(false)));
+		else menu.addItem((item) => item.setTitle(t('entry.showHidden')).setIcon('eye').onClick(show));
+		if (lock.enabled) menu.addItem((item) => item.setTitle(t('lock.now')).setIcon('lock').onClick(() => lock.lock()));
+		menu.showAtMouseEvent(e);
+	}
+
 	private render(): void {
+		if (this.plugin.lock.locked) return this.showGate();
+		this.gate?.remove();
+		this.gate = null;
+		this.privacy.toggle(this.plugin.lock.enabled || listEntries(this.app, this.plugin.settings.journalFolder, { includeHidden: true }).some((e) => e.hidden));
 		const from = this.start.format('YYYY-MM-DD');
 		const to = this.end().format('YYYY-MM-DD');
-		const entries = listEntries(this.app, this.plugin.settings.journalFolder).filter((e) => e.date >= from && e.date < to);
+		const entries = this.entries().filter((e) => e.date >= from && e.date < to);
 		this.yearLabel.setText(this.periodLabel());
 		this.yearLabel.toggleClass('is-long', this.scale !== 'year');
 		this.scalePicker.value = this.scale;
@@ -773,6 +875,8 @@ export class TimelineView extends ItemView {
 	}
 	/** Pictures whose shape is being learned, and each painting's crop to its ink (--jeong-crop, an object-view-box). */
 	private learning = new Set<string>();
+	/** Each card with several pictures: all of them, and which one is showing. */
+	private turns = new WeakMap<Element, { pictures: CardPicture[]; at: number; busy: boolean }>();
 	private crops = new Map<string, string>();
 
 	/** A small card: main photo, date and time, title, and a short snippet. place() puts it on the timeline. */
@@ -794,22 +898,16 @@ export class TimelineView extends ItemView {
 			const pictures = card.createDiv({ cls: 'jeong-timeline-entry-photo' });
 			// Each card turns at a slightly different moment, so they don't all change at once
 			pictures.style.setProperty('--jeong-turn-delay', `${(Math.random() * 1.4).toFixed(2)}s`);
-			if (entry.painting) {
-				const src = this.app.vault.getResourcePath(entry.painting);
-				// One just finished is brushed onto the card
-				if (this.plugin.painter.takeFresh(entry.file)) {
-					brushReveal(pictures, src);
-					pictures.lastElementChild?.addClass('is-shown', 'jeong-painting');
-				} else {
-					const img = pictures.createEl('img', { cls: 'is-shown jeong-painting', attr: { src, alt: '', 'data-painting': entry.painting.path } });
-					const crop = this.crops.get(entry.painting.path);
-					if (crop) img.setCssProps({ '--jeong-crop': crop });
-				}
+			const turns: CardPicture[] = [...(entry.painting ? [{ file: entry.painting, painting: true }] : []), ...entry.photos.map((file) => ({ file, painting: false }))];
+			// One just finished is brushed onto the card
+			if (entry.painting && this.plugin.painter.takeFresh(entry.file)) {
+				brushReveal(pictures, this.app.vault.getResourcePath(entry.painting));
+				pictures.lastElementChild?.addClass('is-shown', 'jeong-painting');
+			} else if (turns[0]) {
+				this.cardPicture(pictures, turns[0]).addClass('is-shown');
 			}
 			this.learnShape(entry.painting ?? entry.photos[0], !!entry.painting);
-			entry.photos.forEach((photo, i) =>
-				pictures.createEl('img', { cls: i === 0 && !entry.painting ? 'is-shown' : '', attr: { src: this.app.vault.getResourcePath(photo), alt: '' } }),
-			);
+			if (turns.length > 1) this.turns.set(pictures, { pictures: turns, at: 0, busy: false });
 		}
 		// A brush to illustrate the entry (on a computer, where the painting model runs)
 		if (this.canIllustrate(entry)) this.brushButton(card, entry);
@@ -833,12 +931,51 @@ export class TimelineView extends ItemView {
 		card.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') this.readStory(entry);
 		});
+		if (entry.hidden) card.addClass('is-hidden-entry');
 		// Right-click, or a long press on a phone, for Hide and Delete
 		card.addEventListener('contextmenu', (e) => {
 			e.preventDefault();
 			this.entryMenu(entry).showAtMouseEvent(e);
 		});
 		return card;
+	}
+
+	/** One picture on a card, loaded only when it nears the screen. */
+	private cardPicture(parent: HTMLElement, { file, painting }: CardPicture): HTMLImageElement {
+		const img = parent.createEl('img', {
+			cls: painting ? 'jeong-painting' : '',
+			attr: { loading: 'lazy', decoding: 'async', src: this.app.vault.getResourcePath(file), alt: '', ...(painting ? { 'data-painting': file.path } : {}) },
+		});
+		const crop = painting ? this.crops.get(file.path) : undefined;
+		if (crop) img.setCssProps({ '--jeong-crop': crop });
+		return img;
+	}
+
+	/** Fades a card's next picture in over the one showing, then lets the old one go, so a card only ever holds what it shows. */
+	private turnPicture(pictures: Element): void {
+		const turn = this.turns.get(pictures);
+		if (!turn || turn.busy) return;
+		const at = (turn.at + 1) % turn.pictures.length;
+		const picture = turn.pictures[at];
+		if (!picture) return;
+		turn.busy = true;
+		const old = pictures.querySelector(':scope > .is-shown');
+		const next = this.cardPicture(pictures as HTMLElement, picture);
+		next.addEventListener('error', () => {
+			next.remove();
+			turn.at = at;
+			turn.busy = false;
+		});
+		next.addEventListener('load', () => {
+			turn.at = at;
+			void next.offsetWidth; // so it fades in from nothing, even when it loads at once
+			next.addClass('is-shown');
+			old?.removeClass('is-shown');
+			window.setTimeout(() => {
+				old?.remove();
+				turn.busy = false;
+			}, PHOTO_FADE_MS);
+		});
 	}
 
 	/** Any written entry can be illustrated, with or without photos; only on a computer. */
@@ -855,7 +992,7 @@ export class TimelineView extends ItemView {
 			})
 			.then((done) => {
 				if (!done || this.selected !== entry.file.path || !this.preview.isShown()) return;
-				const updated = listEntries(this.app, this.plugin.settings.journalFolder).find((e) => e.file === entry.file);
+				const updated = this.entries().find((e) => e.file === entry.file);
 				if (updated) void this.showPreview(updated);
 			});
 	}
@@ -955,8 +1092,11 @@ export class TimelineView extends ItemView {
 				void leave(this.preview);
 				await deleteEntry(this.app, entry.file, entry.date);
 			}).open();
-		return new Menu()
-			.addItem((item) => item.setTitle(t('entry.hide')).setIcon('eye-off').onClick(hide))
+		const menu = new Menu();
+		if (this.canIllustrate(entry)) menu.addItem((item) => item.setTitle(t(entry.painting ? 'paint.illustrateAgain' : 'paint.illustrate')).setIcon('paintbrush').onClick(() => this.illustrate(entry)));
+		if (entry.hidden) menu.addItem((item) => item.setTitle(t('entry.unhide')).setIcon('eye').onClick(() => void setHidden(this.app, entry.file, false)));
+		else menu.addItem((item) => item.setTitle(t('entry.hide')).setIcon('eye-off').onClick(hide));
+		return menu
 			.addItem((item) => item.setTitle(t('entry.delete')).setIcon('trash-2').setWarning(true).onClick(remove));
 	}
 
@@ -985,13 +1125,7 @@ export class TimelineView extends ItemView {
 	private cyclePhotos(): void {
 		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 		const turn = window.setInterval(() => {
-			this.track.querySelectorAll('.jeong-timeline-entry-photo').forEach((photos) => {
-				const images = Array.from(photos.children);
-				if (images.length < 2) return;
-				const shown = images.findIndex((image) => image.hasClass('is-shown'));
-				images[shown]?.removeClass('is-shown');
-				images[(shown + 1) % images.length]?.addClass('is-shown');
-			});
+			this.track.querySelectorAll('.jeong-timeline-entry-photo').forEach((photos) => this.turnPicture(photos));
 		}, PHOTO_TURN_MS);
 		this.register(() => window.clearInterval(turn));
 	}
@@ -1032,6 +1166,12 @@ export class TimelineView extends ItemView {
 			{ passive: false },
 		);
 	}
+}
+
+/** A picture that takes its turn on a card. */
+interface CardPicture {
+	file: TFile;
+	painting: boolean;
 }
 
 /** A card render() drew, with where place() last put it. */

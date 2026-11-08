@@ -18,15 +18,17 @@ export interface EntryInfo {
 	photos: TFile[];
 	/** A picture Jeong painted for an entry without photos (frontmatter: painting). */
 	painting: TFile | null;
+	/** Left off the timeline unless hidden entries are being shown. */
+	hidden: boolean;
 }
 
-export function listEntries(app: App, journalFolder: string): EntryInfo[] {
+export function listEntries(app: App, journalFolder: string, options: { includeHidden?: boolean } = {}): EntryInfo[] {
 	const prefix = `${normalizePath(journalFolder)}/`;
 	const entries: EntryInfo[] = [];
 	for (const file of app.vault.getMarkdownFiles()) {
 		if (!file.path.startsWith(prefix)) continue;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-		if (!fm || typeof fm.date !== 'string' || !('visibility' in fm) || fm.hidden === true) continue;
+		if (!fm || typeof fm.date !== 'string' || !('visibility' in fm) || (fm.hidden === true && !options.includeHidden)) continue;
 		const painting = typeof fm.painting === 'string' ? app.vault.getAbstractFileByPath(normalizePath(`${file.parent?.path ?? ''}/${fm.painting}`)) : null;
 		entries.push({
 			file,
@@ -40,6 +42,7 @@ export function listEntries(app: App, journalFolder: string): EntryInfo[] {
 				.map((name) => app.vault.getAbstractFileByPath(normalizePath(`${file.parent?.path ?? ''}/${name}`)))
 				.filter((photo): photo is TFile => photo instanceof TFile),
 			painting: painting instanceof TFile ? painting : null,
+			hidden: fm.hidden === true,
 		});
 	}
 	return entries.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));

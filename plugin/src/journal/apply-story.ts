@@ -1,5 +1,6 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian';
 import type { ComposedEntry } from '../compose/composer';
+import { parseEntryNote, serializeEntryNote, storyFingerprint } from './entry-note';
 import { relatedLine, safeName } from './entry-writer';
 import { t } from '../i18n';
 
@@ -26,25 +27,17 @@ export async function applyStory(app: App, note: TFile, composed: ComposedEntry,
 	}
 
 	// The recording player stays above the story; photos stay below it
-	const photos: unknown = app.metadataCache.getFileCache(note)?.frontmatter?.photos;
-	const photoNames = Array.isArray(photos) ? photos.map(String) : [];
-	const isPhoto = (line: string) => photoNames.some((photo) => line.endsWith(`/${photo}]]`) || line === `![[${photo}]]`);
-	await app.vault.process(note, (content) => {
-		const frontmatter = /^---\n[\s\S]*?\n---\n/.exec(content)?.[0] ?? '';
-		const body = content.slice(frontmatter.length);
-		const embeds = body.match(/^!\[\[[^\]]+\]\]$/gm) ?? [];
-		const top = embeds.filter((line) => !isPhoto(line));
-		const bottom = embeds.filter(isPhoto);
-		return (
-			`${frontmatter}\n${top.join('\n')}${top.length ? '\n\n' : ''}${relatedLine(name, !!draft || !!composed.aiDraft)}\n\n${composed.story}\n` +
-			(bottom.length ? `\n${bottom.join('\n')}\n` : '')
-		);
-	});
+	await app.vault.process(note, (content) =>
+		serializeEntryNote({ ...parseEntryNote(content), links: relatedLine(name, !!draft || !!composed.aiDraft), notes: [], story: composed.story }),
+	);
 
 	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
 		if (composed.title) fm.title = composed.title;
-		fm.summary = composed.summary;
+		if (composed.summary) fm.summary = composed.summary;
 		fm.status = 'written';
+		// So a later change made right in the note can be recognized, and a spoken change counts as the person's own
+		fm.storyPrint = storyFingerprint(composed.story);
+		if (!composed.aiDraft && composed.story) fm.edited = true;
 		if (composed.flagged.length) fm.review = composed.flagged;
 		else delete fm.review;
 		fm.engine = `${typeof fm.engine === 'string' ? fm.engine.split(' · story ')[0] : ''} · story ${model}`;
@@ -68,7 +61,7 @@ function findByKind(app: App, folder: TFolder, kind: string): TFile | null {
 	return null;
 }
 
-async function renameToTitle(app: App, note: TFile, folder: TFolder, title: string): Promise<TFile> {
+export async function renameToTitle(app: App, note: TFile, folder: TFolder, title: string): Promise<TFile> {
 	const newName = safeName(title);
 	const oldName = note.basename;
 	if (!newName || newName === oldName) return note;
@@ -91,17 +84,4 @@ async function renameToTitle(app: App, note: TFile, folder: TFolder, title: stri
 	const notePath = normalizePath(`${parent.path}/${newName}.md`);
 	if (!app.vault.getAbstractFileByPath(notePath)) await app.fileManager.renameFile(note, notePath);
 	return note;
-}
-
-/** The spoken words from a transcript note, without frontmatter, labels, embeds, or timestamps. */
-export function transcriptText(content: string): string {
-	return content
-		.replace(/^---\n[\s\S]*?\n---\n/, '')
-		.replace(/^>.*$/gm, '')
-		.replace(/^!\[\[[^\]]+\]\]$/gm, '')
-		.replace(/\*\*\[\d+(?::\d+)+\]\*\*\s*/g, '')
-		.split(/\n\s*\n/)
-		.map((line) => line.trim())
-		.filter(Boolean)
-		.join(' ');
 }

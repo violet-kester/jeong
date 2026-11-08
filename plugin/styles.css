@@ -873,6 +873,8 @@ body {
 .jeong-voice {
 	flex: 1;
 	min-height: 0;
+	overflow-y: auto;
+	scrollbar-width: none;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -965,19 +967,40 @@ body {
 	background: none;
 }
 
-.jeong-voice-foot .jeong-photos-strip {
-	display: contents;
+/* The photos, in their own row above the hairline: a carousel you swipe, each at its own shape */
+.jeong-voice-strip {
+	width: 100%;
 }
 
-.jeong-voice-foot .jeong-photos-item,
-.jeong-voice-foot .jeong-photos-item.is-main {
-	width: auto;
-	height: var(--jeong-space-xl);
-	border-radius: 0.375rem;
+.jeong-voice-strip .jeong-photos-strip:not(:empty) {
+	flex-wrap: nowrap;
+	justify-content: safe center;
+	margin-top: var(--jeong-space-s);
+	padding: var(--jeong-space-3xs);
+	overflow-x: auto;
+	scroll-snap-type: x proximity;
+	scrollbar-width: none;
 }
 
-.jeong-voice-foot .jeong-photos-item img {
+.jeong-voice-strip .jeong-photos-strip::-webkit-scrollbar {
+	display: none;
+}
+
+.jeong-voice-strip .jeong-photos-item,
+.jeong-voice-strip .jeong-photos-item.is-main {
+	flex: none;
 	width: auto;
+	height: 6.5rem;
+	scroll-snap-align: center;
+}
+
+.jeong-voice-strip .jeong-photos-item img {
+	width: auto;
+}
+
+/* With photos showing, the rings give up the room the row needs */
+.jeong-voice:has(.jeong-photos-strip:not(:empty)) .jeong-voice-orb {
+	height: 17rem;
 }
 
 .jeong .jeong-voice-foot .jeong-photos button.jeong-photos-drop,
@@ -1076,6 +1099,93 @@ body {
 
 .is-mobile .jeong-entry-main {
 	padding: var(--jeong-space-m) var(--jeong-space-m) var(--jeong-space-s);
+}
+
+/* Touch screens have no hover: a photo's star and remove are always showing */
+.is-mobile .jeong .jeong-photos-star,
+.is-mobile .jeong .jeong-photos-remove {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.jeong .jeong-photos-star,
+	.jeong .jeong-photos-remove {
+		opacity: 1;
+	}
+}
+
+/* Computers, once there's an entry: three smaller buttons fit the page, and the status takes its own line under them */
+.jeong.jeong-record.has-entry:not(.is-voice-only) .jeong-entry-foot {
+	flex-wrap: wrap;
+	row-gap: var(--jeong-space-2xs);
+}
+
+.jeong.jeong-record.has-entry:not(.is-voice-only) .jeong-entry-control {
+	order: 1;
+	margin-left: auto;
+	padding-right: 0;
+	gap: var(--jeong-space-s);
+}
+
+.jeong.jeong-record.has-entry:not(.is-voice-only) .jeong-entry-foot .jeong-record-status {
+	order: 2;
+	flex-basis: 100%;
+	max-width: none;
+}
+
+.jeong.jeong-record.has-entry:not(.is-voice-only) .jeong-entry-action {
+	gap: var(--jeong-space-3xs);
+}
+
+.jeong.jeong-record.has-entry:not(.is-voice-only) button.jeong-record-button,
+.jeong.jeong-record.has-entry:not(.is-voice-only) button.jeong-open-button {
+	width: var(--jeong-space-2xl);
+	height: var(--jeong-space-2xl);
+}
+
+/* Phones, once there's an entry: Open entry, Record more, and Done, stacked, each with its label beside it */
+.jeong.jeong-record.is-voice-only.has-entry .jeong-voice-orb {
+	height: auto;
+	padding-block: var(--jeong-space-m);
+}
+
+.jeong.jeong-record.is-voice-only.has-entry .jeong-voice-orb .jeong-entry-voice {
+	display: none;
+}
+
+.jeong.jeong-record.is-voice-only.has-entry .jeong-entry-control {
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--jeong-space-xs);
+	width: min(15rem, 100%);
+}
+
+.jeong.jeong-record.is-voice-only.has-entry .jeong-entry-action {
+	flex-direction: row;
+	gap: var(--jeong-space-s);
+}
+
+.jeong.jeong-record.is-voice-only.has-entry button.jeong-record-button,
+.jeong.jeong-record.is-voice-only.has-entry button.jeong-open-button {
+	flex: none;
+	width: var(--jeong-space-xl);
+	height: var(--jeong-space-xl);
+}
+
+.jeong.jeong-record.is-voice-only.has-entry button.jeong-record-button .jeong-record-button-icon svg,
+.jeong.jeong-record.is-voice-only.has-entry button.jeong-open-button svg {
+	width: var(--jeong-space-m);
+	height: var(--jeong-space-m);
+}
+
+.jeong.jeong-record.is-voice-only.has-entry .jeong-voice-orb .jeong-record-timer,
+.jeong.jeong-record.is-voice-only.has-entry .jeong-entry-action-label {
+	position: static;
+	height: auto;
+	font-family: var(--jeong-display);
+	font-weight: 700;
+	font-size: 1.05em;
+	line-height: 1.3;
 }
 
 /* Timeline: a printed chart of the year */
@@ -1771,6 +1881,33 @@ body {
 .jeong-timeline-veil-layer:nth-child(4) { --jeong-veil-blur: 0.1875rem; --jeong-veil-from: 0.7; --jeong-veil-to: 0.84; }
 .jeong-timeline-veil-layer:nth-child(5) { --jeong-veil-blur: 0.25rem; --jeong-veil-from: 0.84; --jeong-veil-to: 0.94; }
 .jeong-timeline-veil-layer:nth-child(6) { --jeong-veil-blur: 0.375rem; --jeong-veil-from: 0.94; --jeong-veil-to: 1; }
+
+/* Phones: one blur in the whole view and stars that hold still, because stacked blurs and endless animation cost
+   the graphics memory a phone may not have. The pills and the glass under the header go without. */
+.is-mobile .jeong-timeline-veil-layer:not(:last-child) {
+	display: none;
+}
+
+.is-mobile .jeong-timeline-veil-layer:last-child {
+	--jeong-veil-blur: 0.25rem;
+	--jeong-veil-from: 0;
+	--jeong-veil-to: 0.7;
+}
+
+.is-mobile .jeong-timeline-glass {
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+}
+
+.is-mobile .jeong-timeline-pill {
+	background-color: color-mix(in srgb, var(--jeong-day-noon) 92%, transparent);
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+}
+
+.is-mobile .jeong-timeline-twinkle {
+	animation: none;
+}
 
 /* The numeral and its name stay at the top together while a busy stretch scrolls up and down, over the band */
 .jeong-timeline-month-head {
@@ -2577,4 +2714,155 @@ body {
 	gap: var(--jeong-space-2xs);
 	padding-top: var(--jeong-space-xs);
 	border-top: 1px solid var(--jeong-hairline);
+}
+
+/* Editing an entry by hand */
+.jeong-edit-heading,
+.jeong.jeong-edit h2.jeong-edit-heading {
+	margin: 0;
+	font-family: var(--jeong-display);
+	font-size: var(--jeong-step-2);
+}
+
+.jeong-edit-field {
+	display: grid;
+	gap: var(--jeong-space-2xs);
+}
+
+.jeong-edit-label {
+	font-family: var(--jeong-mono);
+	font-size: var(--jeong-step--2);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--jeong-text-muted);
+}
+
+.jeong-edit-field input[type='text'],
+.jeong-edit-field textarea {
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	font-family: var(--jeong-body);
+	/* 16px at least, or a phone zooms the page when the field gets focus */
+	font-size: max(1rem, var(--jeong-step-0));
+	line-height: 1.6;
+	resize: vertical;
+}
+
+.jeong-edit-photos {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--jeong-space-2xs);
+}
+
+.jeong-edit-photos:empty {
+	display: none;
+}
+
+.jeong-edit-photo {
+	position: relative;
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	width: 6rem;
+	height: 6rem;
+	padding: var(--jeong-space-3xs);
+	box-sizing: border-box;
+}
+
+.jeong-edit-photo img {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	border-radius: var(--jeong-space-3xs);
+}
+
+.jeong-edit-photo.is-main img {
+	outline: 2px solid var(--jeong-persimmon);
+	outline-offset: 1px;
+}
+
+.jeong .jeong-edit-photo button {
+	position: relative;
+	width: 2.25rem;
+	height: 2.25rem;
+	padding: 0;
+	border-radius: 999rem;
+	background-color: rgba(30, 24, 18, 0.72);
+	color: #FBF3E2;
+	box-shadow: none;
+}
+
+.jeong .jeong-edit-photo button.jeong-edit-photo-remove {
+	margin-left: auto;
+}
+
+.jeong-entry-story-edit {
+	margin-top: var(--jeong-space-xs);
+}
+
+/* The locked screen, and the quiet privacy button */
+.jeong-timeline-lock {
+	position: absolute;
+	inset: 0;
+	z-index: 30;
+	display: grid;
+	place-items: center;
+	padding-inline: var(--jeong-space-m);
+	background-color: var(--background-primary);
+}
+
+.jeong-password-form {
+	display: grid;
+	justify-items: center;
+	gap: var(--jeong-space-xs);
+	width: min(20rem, 100%);
+}
+
+.jeong-password-form h2 {
+	margin: 0;
+	font-family: var(--jeong-display);
+}
+
+.jeong-password-form button {
+	justify-self: center;
+}
+
+.jeong-password-form input {
+	width: 100%;
+	font-family: var(--jeong-body);
+	font-size: max(1rem, var(--jeong-step-0));
+}
+
+.jeong-password-error {
+	min-height: 1.4em;
+	color: var(--jeong-persimmon);
+	font-size: var(--jeong-step--1);
+}
+
+.jeong-timeline-lock-icon {
+	color: var(--jeong-text-muted);
+}
+
+.jeong.jeong-timeline button.jeong-timeline-privacy {
+	position: absolute;
+	right: var(--jeong-space-m);
+	top: calc(var(--jeong-space-3xl) * 1.6);
+	z-index: 6;
+	width: 2.75rem;
+	height: 2.75rem;
+	padding: 0;
+	border: 0;
+	border-radius: 999rem;
+	background-color: transparent;
+	color: var(--jeong-text-muted);
+	box-shadow: none;
+	opacity: 0.6;
+}
+
+.jeong-timeline-entry.is-hidden-entry {
+	opacity: 0.55;
+	outline: 1px dashed var(--jeong-text-muted);
 }

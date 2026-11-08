@@ -8,7 +8,9 @@ import { DEFAULT_SETTINGS, JeongSettings, JeongSettingTab, OLD_PAINT_STYLES, PAI
 import { RecordModal, type RecordModalOptions } from './ui/record-modal';
 import { PerformanceModal } from './ui/performance-modal';
 import { Metrics } from './metrics/metrics';
+import { watchRestarts } from './metrics/restart-watch';
 import { Painter } from './paint/painter';
+import { JournalLock } from './privacy/journal-lock';
 import { addIcons } from './ui/icons';
 import { t } from './i18n';
 
@@ -22,12 +24,21 @@ export default class JeongPlugin extends Plugin {
 	llm!: StoryWriter;
 	loose!: LooseProcessor;
 	painter!: Painter;
+	lock!: JournalLock;
 
 	async onload() {
 		await this.loadSettings();
+		this.lock = new JournalLock(
+			() => this.settings.lock,
+			async (verifier) => {
+				this.settings.lock = verifier;
+				await this.saveSettings();
+			},
+		);
 		addIcons();
 		this.applyTheme();
 		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, this.manifest.version);
+		watchRestarts(this, this.metrics);
 		const secret = (id: string) => (id ? (this.app.secretStorage.getSecret(id) ?? '') : '');
 		this.llm = new StoryWriter(() => this.settings, secret);
 		this.painter = new Painter(this.app, this.llm, this.metrics, () => this.settings, secret);
@@ -48,6 +59,16 @@ export default class JeongPlugin extends Plugin {
 			id: 'open-timeline',
 			name: t('command.openTimeline'),
 			callback: () => void this.openTimeline(),
+		});
+
+		this.addCommand({
+			id: 'lock-journal',
+			name: t('command.lock'),
+			checkCallback: (checking) => {
+				if (!this.lock.enabled) return false;
+				if (!checking) this.lock.lock();
+				return true;
+			},
 		});
 
 		this.addCommand({
