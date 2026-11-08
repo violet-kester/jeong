@@ -11,6 +11,8 @@ export default defineConfig(
 		'build-tools.mjs',
 		// Jeong in the browser: a stand-in for Obsidian and a dev server, not part of the plugin these rules are for
 		'web',
+		// Tests run under Node with a stand-in for Obsidian, outside the plugin these rules are for
+		'test',
 		'version-bump.mjs',
 		'versions.json',
 		'main.js',

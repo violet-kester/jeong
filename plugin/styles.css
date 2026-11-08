@@ -898,7 +898,8 @@ body {
 	flex: none;
 	width: 100%;
 	height: 20.625rem;
-	margin-top: auto;
+	/* A set distance, not auto: the words below change length, and must not move the button */
+	margin-top: clamp(0.5rem, 5vh, 4rem);
 	display: grid;
 	place-items: center;
 }
@@ -1143,10 +1144,27 @@ body {
 	height: var(--jeong-space-2xl);
 }
 
-/* Phones, once there's an entry: Open entry, Record more, and Done, stacked, each with its label beside it */
+/* Phones, once there's an entry: Open entry, Done, then Record more, stacked, each with its label beside it */
 .jeong.jeong-record.is-voice-only.has-entry .jeong-voice-orb {
 	height: auto;
+	/* centred in whatever room is left above "Saved to your timeline", which rests at the bottom */
+	margin-block: auto;
 	padding-block: var(--jeong-space-m);
+}
+
+.jeong.jeong-record.is-voice-only.has-entry .jeong-record-status {
+	margin-bottom: var(--jeong-space-m);
+}
+
+/* With photos showing, the buttons give up a little size so everything still fits */
+.jeong.jeong-record.is-voice-only.has-entry:has(.jeong-photos-item) .jeong-voice-orb {
+	padding-block: var(--jeong-space-s);
+}
+
+.jeong.jeong-record.is-voice-only.has-entry:has(.jeong-photos-item) button.jeong-record-button,
+.jeong.jeong-record.is-voice-only.has-entry:has(.jeong-photos-item) button.jeong-open-button {
+	width: 4.5rem;
+	height: 4.5rem;
 }
 
 .jeong.jeong-record.is-voice-only.has-entry .jeong-voice-orb .jeong-entry-voice {
@@ -1156,8 +1174,8 @@ body {
 .jeong.jeong-record.is-voice-only.has-entry .jeong-entry-control {
 	flex-direction: column;
 	align-items: stretch;
-	gap: var(--jeong-space-xs);
-	width: min(15rem, 100%);
+	gap: var(--jeong-space-m);
+	width: min(16rem, 100%);
 }
 
 .jeong.jeong-record.is-voice-only.has-entry .jeong-entry-action {
@@ -1165,17 +1183,21 @@ body {
 	gap: var(--jeong-space-s);
 }
 
+.jeong.jeong-record.is-voice-only.has-entry .jeong-entry-action:has(.jeong-record-button) {
+	order: 1;
+}
+
 .jeong.jeong-record.is-voice-only.has-entry button.jeong-record-button,
 .jeong.jeong-record.is-voice-only.has-entry button.jeong-open-button {
 	flex: none;
-	width: var(--jeong-space-xl);
-	height: var(--jeong-space-xl);
+	width: var(--jeong-space-3xl);
+	height: var(--jeong-space-3xl);
 }
 
 .jeong.jeong-record.is-voice-only.has-entry button.jeong-record-button .jeong-record-button-icon svg,
 .jeong.jeong-record.is-voice-only.has-entry button.jeong-open-button svg {
-	width: var(--jeong-space-m);
-	height: var(--jeong-space-m);
+	width: var(--jeong-space-l);
+	height: var(--jeong-space-l);
 }
 
 .jeong.jeong-record.is-voice-only.has-entry .jeong-voice-orb .jeong-record-timer,

@@ -21,6 +21,8 @@ export interface EntryPhoto {
 	name: string;
 	type: string;
 	data: Blob;
+	/** Save under exactly this name, so writing it again replaces it instead of adding a copy. */
+	fileName?: string;
 }
 
 export interface NewEntry {
@@ -36,6 +38,11 @@ export interface NewEntry {
 	timezone?: string;
 	/** Photos added to the entry, in order; the first is the main photo. Saved as the original files. */
 	photos?: EntryPhoto[];
+	/** The phone session this came from, and which take in it: the entry lists the takes it holds. */
+	session?: string;
+	takeNumber?: number;
+	/** Save the recording under exactly this name, so a repeated write replaces it instead of adding a copy. */
+	fileName?: string;
 }
 
 /** Saves the entry and returns its main note. */
@@ -55,16 +62,15 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 
 	// Names unique across the whole vault (date and time first), so links can never point at another entry's file
 	const stamp = when.format('YYYY-MM-DD HHmm');
-	const recordingName = `${stamp} recording.${extensionFor(entry.mimeType)}`;
-	await app.vault.createBinary(`${folder}/${recordingName}`, await entry.recording.arrayBuffer());
-
-	const photoNames = await savePhotos(app, folder, stamp, entry.photos ?? []);
-
+	const recordingName = entry.fileName ?? `${stamp} recording.${extensionFor(entry.mimeType)}`;
 	const duration = formatTime(entry.durationMs / 1000);
 	const name = safeName(title);
+	const origin = entry.session ? { session: entry.session } : {};
+
+	// The transcript first, so a write cut short can be recognised by its session; the entry itself last, so it only exists whole
 	await app.vault.create(
 		`${folder}/${name} (transcript).md`,
-		frontmatter({ kind: 'transcript', entry: `[[${name}]]`, date: day, recording: recordingName, engine: entry.engine }) +
+		frontmatter({ kind: 'transcript', entry: `[[${name}]]`, date: day, recording: recordingName, engine: entry.engine, ...origin }) +
 			`> [!quote] ${t('files.transcript')}\n> ${t('files.transcriptAbout')} [[${name}|${t('files.yourStory')}]].\n\n` +
 			`${embed(folder, recordingName)}\n\n` +
 			(entry.segments.length
@@ -72,6 +78,9 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 				: entry.transcript) +
 			'\n',
 	);
+
+	await putBinary(app, `${folder}/${recordingName}`, await entry.recording.arrayBuffer());
+	const photoNames = await savePhotos(app, folder, stamp, entry.photos ?? []);
 
 	const main = await app.vault.create(
 		`${folder}/${name}.md`,
@@ -90,6 +99,8 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 			recordings: [recordingName],
 			...(photoNames.length ? { photos: photoNames } : {}),
 			engine: entry.engine,
+			...origin,
+			...(entry.takeNumber !== undefined ? { takes: [entry.takeNumber] } : {}),
 		}) +
 			`${embed(folder, recordingName)}\n\n` +
 			`${relatedLine(name, false)}\n\n` +
@@ -106,42 +117,68 @@ export async function writeEntry(app: App, journalFolder: string, entry: NewEntr
 export async function addRecording(app: App, note: TFile, take: NewEntry): Promise<void> {
 	const folder = note.parent;
 	if (!folder) throw new Error('The entry has no folder');
-	const fields: Record<string, unknown> = app.metadataCache.getFileCache(note)?.frontmatter ?? {};
-	const offset = parseTime(typeof fields.duration === 'string' ? fields.duration : '0:00');
+	// From the file itself: an entry written a moment ago (from a loose page) may not be in Obsidian's cache yet
+	const offset = parseTime(/^duration:\s*["']?([\d:]+)/m.exec(await app.vault.read(note))?.[1] ?? '0:00');
 	const stamp = moment(take.startedAt).format('YYYY-MM-DD HHmm');
 
-	const recordingName = freeName(app, folder.path, `${stamp} recording`, extensionFor(take.mimeType));
-	await app.vault.createBinary(`${folder.path}/${recordingName}`, await take.recording.arrayBuffer());
+	const recordingName = take.fileName ?? freeName(app, folder.path, `${stamp} recording`, extensionFor(take.mimeType));
+	const player = embed(folder.path, recordingName);
+	await putBinary(app, `${folder.path}/${recordingName}`, await take.recording.arrayBuffer());
 
-	// The transcript carries on, with this recording's player and times counted from where the last one ended
+	// The transcript carries on, with this recording's player and times counted from where the last one ended.
+	// Each step checks whether it already happened, so a write cut short can simply be run again.
 	const transcript = folder.children.find(
-		(child): child is TFile => child instanceof TFile && app.metadataCache.getFileCache(child)?.frontmatter?.kind === 'transcript',
+		(child): child is TFile =>
+			child instanceof TFile && (child.name === `${note.basename} (transcript).md` || app.metadataCache.getFileCache(child)?.frontmatter?.kind === 'transcript'),
 	);
 	if (transcript) {
 		const words = take.segments.length
 			? take.segments.map((segment) => `**[${formatTime(offset + segment.start)}]** ${segment.text}`).join('\n\n')
 			: take.transcript;
-		await app.vault.process(transcript, (content) => `${content.trimEnd()}\n\n${embed(folder.path, recordingName)}\n\n${words}\n`);
+		await app.vault.process(transcript, (content) => (content.includes(player) ? content : `${content.trimEnd()}\n\n${player}\n\n${words}\n`));
 	}
 
 	// The entry: another player under the first
 	await app.vault.process(note, (content) => {
 		const parsed = parseEntryNote(content);
-		return serializeEntryNote({ ...parsed, players: [...parsed.players, embed(folder.path, recordingName)] });
-	});
-	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
-		fm.recordings = [...listOf(fm.recordings), recordingName];
-		fm.duration = formatTime(offset + take.durationMs / 1000);
+		return parsed.players.includes(player) ? content : serializeEntryNote({ ...parsed, players: [...parsed.players, player] });
 	});
 	await addPhotos(app, note, take.photos ?? [], take.startedAt);
+	// Last, in one write: listing the recording and the take is what makes it count as added
+	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
+		const recordings = listOf(fm.recordings);
+		if (!recordings.includes(recordingName)) fm.recordings = [...recordings, recordingName];
+		fm.duration = formatTime(offset + take.durationMs / 1000);
+		if (take.takeNumber !== undefined) fm.takes = withTake(fm.takes, take.takeNumber);
+	});
+}
+
+/** Records in the entry that a photos-only take is in it. */
+export async function markTake(app: App, note: TFile, takeNumber: number): Promise<void> {
+	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
+		fm.takes = withTake(fm.takes, takeNumber);
+	});
+}
+
+function withTake(takes: unknown, takeNumber: number): number[] {
+	const numbers = (Array.isArray(takes) ? takes : []).map(Number);
+	return numbers.includes(takeNumber) ? numbers : [...numbers, takeNumber];
+}
+
+/** Writes a binary file, replacing one already at that path. */
+export async function putBinary(app: App, path: string, data: ArrayBuffer): Promise<TFile> {
+	const existing = app.vault.getAbstractFileByPath(normalizePath(path));
+	if (!(existing instanceof TFile)) return app.vault.createBinary(path, data);
+	await app.vault.modifyBinary(existing, data);
+	return existing;
 }
 
 /** Saves photos into a folder as "<stamp> photo N", numbered from `firstNumber`, and returns their file names. */
 export async function savePhotos(app: App, folder: string, stamp: string, photos: EntryPhoto[], firstNumber = 1): Promise<string[]> {
 	const names: string[] = [];
 	for (const [i, photo] of photos.entries()) {
-		const name = freeName(app, folder, `${stamp} photo ${firstNumber + i}`, photoExtension(photo));
-		await app.vault.createBinary(`${folder}/${name}`, await photo.data.arrayBuffer());
+		const name = photo.fileName ?? freeName(app, folder, `${stamp} photo ${firstNumber + i}`, photoExtension(photo));
+		await putBinary(app, `${folder}/${name}`, await photo.data.arrayBuffer());
 		names.push(name);
 	}
 	return names;
@@ -154,9 +191,13 @@ export async function addPhotos(app: App, note: TFile, photos: EntryPhoto[], whe
 	if (!folder) throw new Error('The entry has no folder');
 	const existing = listOf(app.metadataCache.getFileCache(note)?.frontmatter?.photos);
 	const names = await savePhotos(app, folder.path, moment(when).format('YYYY-MM-DD HHmm'), photos, existing.length + 1);
-	await app.vault.process(note, (content) => content.trimEnd() + '\n' + photoBlock(folder.path, names));
+	await app.vault.process(note, (content) => {
+		const fresh = names.filter((name) => !content.includes(embed(folder.path, name)));
+		return fresh.length ? content.trimEnd() + '\n' + photoBlock(folder.path, fresh) : content;
+	});
 	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
-		fm.photos = [...listOf(fm.photos), ...names];
+		const listed = listOf(fm.photos);
+		fm.photos = [...listed, ...names.filter((name) => !listed.includes(name))];
 	});
 }
 
@@ -178,19 +219,25 @@ export async function setPhotos(app: App, note: TFile, names: string[]): Promise
 }
 
 /** A frontmatter list as names (empty if it isn't a list). */
-function listOf(value: unknown): string[] {
+export function listOf(value: unknown): string[] {
 	return Array.isArray(value) ? value.map(String) : [];
 }
 
 /** A file name not yet used in the folder: "name.ext", or "name 2.ext", "name 3.ext"… */
 export function freeName(app: App, folder: string, name: string, extension: string): string {
-	let candidate = `${name}.${extension}`;
-	for (let n = 2; app.vault.getAbstractFileByPath(normalizePath(`${folder}/${candidate}`)); n++) candidate = `${name} ${n}.${extension}`;
-	return candidate;
+	const nameFor = (n: number) => (n === 1 ? `${name}.${extension}` : `${name} ${n}.${extension}`);
+	return nameFor(firstFree(app, (n) => `${folder}/${nameFor(n)}`));
+}
+
+/** The first number whose path nothing in the vault is using yet. */
+function firstFree(app: App, pathFor: (n: number) => string): number {
+	let n = 1;
+	while (app.vault.getAbstractFileByPath(normalizePath(pathFor(n)))) n++;
+	return n;
 }
 
 /** "1:14" → 74 seconds; "1:02:05" → 3725. */
-function parseTime(text: string): number {
+export function parseTime(text: string): number {
 	return text.split(':').reduce((total, part) => total * 60 + (Number(part) || 0), 0);
 }
 
@@ -236,7 +283,7 @@ function frontmatter(fields: Record<string, unknown>): string {
 	return `---\n${stringifyYaml(fields)}---\n\n`;
 }
 
-function formatTime(seconds: number): string {
+export function formatTime(seconds: number): string {
 	const whole = Math.max(0, Math.floor(seconds));
 	const h = Math.floor(whole / 3600);
 	const m = Math.floor((whole % 3600) / 60);
@@ -255,7 +302,6 @@ async function ensureFolder(app: App, path: string): Promise<void> {
 }
 
 function uniqueFolder(app: App, path: string): string {
-	let candidate = normalizePath(path);
-	for (let n = 2; app.vault.getAbstractFileByPath(candidate); n++) candidate = normalizePath(`${path} (${n})`);
-	return candidate;
+	const pathFor = (n: number) => normalizePath(n === 1 ? path : `${path} (${n})`);
+	return pathFor(firstFree(app, pathFor));
 }

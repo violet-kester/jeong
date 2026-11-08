@@ -189,6 +189,11 @@ export class FsVault extends Events {
 		return file;
 	}
 
+	async modifyBinary(file: TFile, data: ArrayBuffer): Promise<void> {
+		await this.writeAt(file.path, data);
+		this.trigger('modify', file);
+	}
+
 	async read(file: TFile): Promise<string> {
 		return this.adapter.read(file.path);
 	}

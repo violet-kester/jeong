@@ -7,7 +7,8 @@ import { arrive, fade, leave } from './motion';
 import { checkWebGpu } from '../diagnostics/webgpu';
 import { deleteTemp, extensionFor, saveToTemp } from '../storage/temp-file';
 import { addPhotos, addRecording, writeEntry } from '../journal/entry-writer';
-import { saveLoosePage } from '../journal/loose-pages';
+import { SaveQueue } from '../journal/save-queue';
+import { ConfirmModal } from './confirm-modal';
 import { PhotoTray, type Photo } from './photo-tray';
 import { openButtonRound } from './open-button';
 import { addToStory, reviseStory, writeStory } from '../compose/write-story';
@@ -89,6 +90,9 @@ export class RecordModal extends Modal {
 	private saving = false;
 	private stopping: Promise<void> = Promise.resolve();
 	private photoWrites: Promise<void> = Promise.resolve();
+	/** Phone recordings on their way into the journal. */
+	private saves!: SaveQueue;
+	private retryButton!: HTMLButtonElement;
 	private doneAction!: HTMLElement;
 	/** The left column: the date, then the photos, then (once saved, without photos) Illustrate. */
 	private side: HTMLElement | null = null;
@@ -196,6 +200,7 @@ export class RecordModal extends Modal {
 	private buildVoiceOnly(now: moment.Moment): void {
 		this.modalEl.addClass('is-voice-only');
 		const main = this.contentEl.createDiv({ cls: 'jeong-voice' });
+		this.saves = new SaveQueue(this.app, this.options.journalFolder);
 		// Today, so no year: short enough to sit on one line, clear of the close button
 		main.createDiv({ cls: 'jeong-voice-date', text: now.format('ddd, MMM D · LT') });
 
@@ -210,6 +215,8 @@ export class RecordModal extends Modal {
 
 		this.heading = main.createDiv({ cls: 'jeong-entry-heading', text: t('record.tapToStart') });
 		this.status = main.createDiv({ cls: 'jeong-record-status', text: t('record.voiceOnlyHint') });
+		this.retryButton = main.createEl('button', { cls: 'jeong-save-retry is-hidden', text: t('record.tryAgain') });
+		this.retryButton.addEventListener('click', () => void this.flushSaves());
 		// Not shown here, but recording still keeps its place in them
 		this.transcript = main.createDiv({ cls: 'jeong-transcript is-hidden' });
 		this.take = this.transcript.createSpan({ cls: 'jeong-take' });
@@ -299,6 +306,18 @@ export class RecordModal extends Modal {
 	/** Closing: the window settles and fades, and the background lightens, before it goes. */
 	close(): void {
 		if (this.closing) return;
+		// A phone recording is still being written: decide once we know whether it made it
+		if (this.onPhone && this.saving) {
+			void this.stopping.catch(() => undefined).finally(() => this.close());
+			return;
+		}
+		if (this.saves?.failed) {
+			new ConfirmModal(this.app, t('record.unsavedTitle'), t('record.unsavedBody'), t('record.closeAnyway'), async () => {
+				this.saves.discard();
+				this.close();
+			}).open();
+			return;
+		}
 		this.closing = true;
 		const background = this.containerEl.querySelector<HTMLElement>('.modal-bg');
 		void Promise.all([leave(this.modalEl, () => undefined), background ? fade(background, 'out') : Promise.resolve()]).then(() => super.close());
@@ -604,6 +623,12 @@ export class RecordModal extends Modal {
 		if (!note || this.saving) return;
 		const photos = this.photos.claim();
 		if (!photos.length) return;
+		if (this.onPhone) {
+			// Their own small take, so nothing already saved is changed
+			this.saves.add({ durationMs: 0, startedAt: new Date(), language: this.language, photos: photoData(photos) });
+			this.photoWrites = this.photoWrites.then(() => this.saves.flush().then(() => undefined, (error: unknown) => this.showSaveFailed(error)));
+			return;
+		}
 		this.photoWrites = this.photoWrites.then(async () => {
 			try {
 				await addPhotos(this.app, note, photoData(photos));
@@ -618,27 +643,38 @@ export class RecordModal extends Modal {
 
 	/** On a phone: save the recording to Loose pages, to be written up on a computer later. */
 	private async saveLoose(recording: Recording): Promise<void> {
-		const photos = this.photos.claim();
+		this.saves.add({
+			recording: recording.blob,
+			mimeType: recording.mimeType,
+			durationMs: recording.durationMs,
+			startedAt: this.startedAt,
+			language: this.language,
+			photos: photoData(this.photos.claim()),
+		});
+		await this.flushSaves();
+	}
+
+	private async flushSaves(): Promise<void> {
+		this.status.setText(t('record.saving'));
+		this.retryButton.addClass('is-hidden');
 		try {
-			const note = await saveLoosePage(this.app, this.options.journalFolder, {
-				recording: recording.blob,
-				mimeType: recording.mimeType,
-				durationMs: recording.durationMs,
-				startedAt: this.startedAt,
-				language: this.language,
-				// Record more on a phone starts a new loose page: only the photos not saved yet go with it
-				photos: photoData(photos),
-			});
+			const note = await this.saves.flush();
+			if (!note) return;
 			this.status.setText(t('record.savedLoose'));
 			this.showSaved(note);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			console.error('Jeong: could not save the recording', error);
-			this.photos.release(photos);
-			this.status.setText(t('record.saveFailed'));
-			this.button.disabled = false;
-			this.metrics.log({ event: 'error', where: 'save-loose', message });
+			this.showSaveFailed(error);
 		}
+	}
+
+	/** Nothing is lost while the window stays open: the take waits, and Try again writes it. */
+	private showSaveFailed(error: unknown): void {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error('Jeong: could not save the recording', error);
+		this.status.setText(t('record.saveFailed'));
+		this.retryButton.removeClass('is-hidden');
+		this.button.disabled = false;
+		this.metrics.log({ event: 'error', where: 'save-loose', message });
 	}
 
 	/** Saves the recording to the temp folder and shows where. Returns the path, or null if that isn't possible. */

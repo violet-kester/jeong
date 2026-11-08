@@ -1,5 +1,5 @@
-import { Notice, Platform, Plugin, TFile } from 'obsidian';
-import { LooseProcessor } from './journal/process-loose';
+import { Notice, Platform, Plugin, TFile, type TAbstractFile } from 'obsidian';
+import { CaptureProcessor } from './journal/capture-processor';
 import { StoryWriter } from './compose/language-model';
 import { writeStory } from './compose/write-story';
 import { paintMessage, storyMessage } from './ui/story-messages';
@@ -22,7 +22,7 @@ export default class JeongPlugin extends Plugin {
 	settings!: JeongSettings;
 	metrics!: Metrics;
 	llm!: StoryWriter;
-	loose!: LooseProcessor;
+	loose!: CaptureProcessor;
 	painter!: Painter;
 	lock!: JournalLock;
 
@@ -42,7 +42,7 @@ export default class JeongPlugin extends Plugin {
 		const secret = (id: string) => (id ? (this.app.secretStorage.getSecret(id) ?? '') : '');
 		this.llm = new StoryWriter(() => this.settings, secret);
 		this.painter = new Painter(this.app, this.llm, this.metrics, () => this.settings, secret);
-		this.loose = new LooseProcessor(this.app, () => this.settings.journalFolder, this.llm, this.metrics, this.manifest.version);
+		this.loose = new CaptureProcessor(this.app, () => this.settings.journalFolder, this.llm, this.metrics, this.manifest.version);
 
 		this.registerView(TIMELINE_VIEW, (leaf) => new TimelineView(leaf, this));
 
@@ -103,34 +103,30 @@ export default class JeongPlugin extends Plugin {
 		this.addCommand({
 			id: 'show-performance',
 			name: t('command.showPerformance'),
-			callback: () => new PerformanceModal(this.app, this.metrics).open(),
+			callback: () => new PerformanceModal(this.app, this.metrics, this.loose.statuses).open(),
 		});
 
 		this.addCommand({
 			id: 'process-loose-pages',
 			name: t('command.processLoose'),
 			callback: () => {
-				const queued = this.loose.processAll();
-				new Notice(queued ? `${t('loose.queued')} ${queued}` : t('loose.none'));
+				void this.loose.run().then((statuses) => {
+					const waiting = statuses.filter((status) => status.state !== 'done').length;
+					new Notice(waiting ? `${t('loose.stillWaiting')} ${waiting}` : t('loose.none'));
+				});
 			},
 		});
 
 		// On a computer, write up phone recordings as they arrive through sync, and any left from before
 		if (Platform.isDesktopApp) {
 			this.app.workspace.onLayoutReady(() => {
-				if (this.settings.autoProcessLoose) this.loose.processAll();
-				this.registerEvent(
-					this.app.metadataCache.on('changed', (file) => {
-						if (!this.settings.autoProcessLoose || file.parent?.path !== this.loose.folder) return;
-						if (this.app.metadataCache.getFileCache(file)?.frontmatter?.status === 'recorded') this.loose.enqueue(file);
-					}),
-				);
-				// Sync can deliver the note before its recording; try again once the audio arrives
-				this.registerEvent(
-					this.app.vault.on('create', (file) => {
-						if (this.settings.autoProcessLoose && file.parent?.path === this.loose.folder && !file.path.endsWith('.md')) this.loose.processAll();
-					}),
-				);
+				if (this.settings.autoProcessLoose) void this.loose.run();
+				// Sync delivers a take's files in any order, so look again whenever anything lands in Loose pages
+				const arrived = (file: TAbstractFile) => {
+					if (this.settings.autoProcessLoose && file.parent?.path === this.loose.folder) this.loose.schedule();
+				};
+				this.registerEvent(this.app.metadataCache.on('changed', arrived));
+				this.registerEvent(this.app.vault.on('create', arrived));
 			});
 		}
 

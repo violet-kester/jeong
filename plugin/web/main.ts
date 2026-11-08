@@ -92,6 +92,8 @@ async function open(handle: FileSystemDirectoryHandle, name: string): Promise<vo
 		settings,
 		painter,
 		lock,
+		// Writing up recordings happens on a computer, in the plugin
+		loose: { statusOf: () => undefined },
 		openRecorder: (entry?: RecordModalOptions['entry']) =>
 			new RecordModal(app, metrics, { liveMode: settings.liveMode, journalFolder: settings.journalFolder, llm: ollama, painter, paintInk: settings.paintInk, entry }).open(),
 		showTheme: (theme: JeongTheme | null) => {

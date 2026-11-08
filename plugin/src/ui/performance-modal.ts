@@ -2,6 +2,7 @@ import { App, Modal } from 'obsidian';
 import { t } from '../i18n';
 import type { Metrics, MetricRecord } from '../metrics/metrics';
 import { shortName } from './record-modal';
+import type { SessionStatus } from '../journal/reconcile';
 
 // A summary of everything in the local metrics log: how fast each model loads and
 // transcribes, how accurate it was on the test script, and any errors.
@@ -9,6 +10,7 @@ export class PerformanceModal extends Modal {
 	constructor(
 		app: App,
 		private metrics: Metrics,
+		private recordings: SessionStatus[] = [],
 	) {
 		super(app);
 	}
@@ -69,6 +71,9 @@ export class PerformanceModal extends Modal {
 			cls: 'jeong-perf-summary',
 			text: `${t('perf.restarts')}: ${restarts.length}${last ? ` (${phone} ${t('perf.onPhone')}) · ${t('perf.last')} ${new Date(last.ts).toLocaleString()}` : ''}`,
 		});
+		for (const status of this.recordings.filter((recording) => recording.state !== 'done')) {
+			contentEl.createEl('p', { cls: 'jeong-perf-summary', text: `${t(status.state === 'failed' ? 'perf.recordingFailed' : 'perf.recordingWaiting')}: ${status.detail}` });
+		}
 		contentEl.createEl('p', { cls: 'jeong-perf-note', text: `${t('perf.where')} ${this.metrics.directory}` });
 	}
 

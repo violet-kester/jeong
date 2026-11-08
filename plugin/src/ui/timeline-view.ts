@@ -879,6 +879,12 @@ export class TimelineView extends ItemView {
 	private turns = new WeakMap<Element, { pictures: CardPicture[]; at: number; busy: boolean }>();
 	private crops = new Map<string, string>();
 
+	/** What a waiting card says: where the recording stands, when this computer has tried to write it up. */
+	private waitingText(entry: EntryInfo): string {
+		const state = this.plugin.loose.statusOf(entry.session || `old page ${entry.file.basename}`)?.state;
+		return t(state === 'failed' ? 'timeline.couldNotFinish' : state === 'waiting' ? 'timeline.waitingSync' : 'timeline.waiting');
+	}
+
 	/** A small card: main photo, date and time, title, and a short snippet. place() puts it on the timeline. */
 	private entryCard(entry: EntryInfo): HTMLElement {
 		// No aria-label: Obsidian turns those into tooltips, which would cover the card below. Screen readers read the card's text.
@@ -890,7 +896,7 @@ export class TimelineView extends ItemView {
 		text.createDiv({ cls: 'jeong-timeline-entry-meta', text: moment(`${entry.date} ${entry.time || '12:00'}`).format(entry.time ? 'MMM D · LT' : 'MMM D') });
 		text.createDiv({ cls: 'jeong-timeline-entry-title', text: entry.title });
 		const snippet = text.createDiv({ cls: 'jeong-timeline-entry-snippet' });
-		if (entry.status === 'recorded') snippet.setText(t('timeline.waiting'));
+		if (entry.status === 'recorded') snippet.setText(this.waitingText(entry));
 		else if (entry.summary) snippet.setText(entry.summary);
 		else void this.excerpt(entry).then((excerpt) => snippet.setText(excerpt));
 		// The pictures, large, under the summary: the painting first, then the photos, taking turns

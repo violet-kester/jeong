@@ -1,4 +1,5 @@
 import { App, TAbstractFile, TFile, normalizePath } from 'obsidian';
+import { formatTime, parseTime } from './entry-writer';
 
 // Finds the journal's entries using Obsidian's metadata cache, so nothing has to be read
 // from disk. An entry is a note in the journal folder whose frontmatter has a date and a
@@ -20,17 +21,26 @@ export interface EntryInfo {
 	painting: TFile | null;
 	/** Left off the timeline unless hidden entries are being shown. */
 	hidden: boolean;
+	/** The phone session it came from, if any. */
+	session: string;
 }
 
 export function listEntries(app: App, journalFolder: string, options: { includeHidden?: boolean } = {}): EntryInfo[] {
 	const prefix = `${normalizePath(journalFolder)}/`;
 	const entries: EntryInfo[] = [];
+	// A phone session saves one marker note per take: they share one card until the computer has made the entry
+	const takes = new Map<string, { entry: EntryInfo; take: number; hidden: boolean }[]>();
+	const written = new Set<string>();
 	for (const file of app.vault.getMarkdownFiles()) {
 		if (!file.path.startsWith(prefix)) continue;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-		if (!fm || typeof fm.date !== 'string' || !('visibility' in fm) || (fm.hidden === true && !options.includeHidden)) continue;
+		if (!fm || typeof fm.date !== 'string' || !('visibility' in fm)) continue;
+		const session = text(fm.session);
+		const isTake = session !== '' && fm.take !== undefined;
+		if (session && !isTake) written.add(session);
+		if (!isTake && fm.hidden === true && !options.includeHidden) continue;
 		const painting = typeof fm.painting === 'string' ? app.vault.getAbstractFileByPath(normalizePath(`${file.parent?.path ?? ''}/${fm.painting}`)) : null;
-		entries.push({
+		const entry: EntryInfo = {
 			file,
 			title: text(fm.title) || file.basename,
 			date: fm.date,
@@ -43,7 +53,18 @@ export function listEntries(app: App, journalFolder: string, options: { includeH
 				.filter((photo): photo is TFile => photo instanceof TFile),
 			painting: painting instanceof TFile ? painting : null,
 			hidden: fm.hidden === true,
-		});
+			session,
+		};
+		if (isTake) takes.set(session, [...(takes.get(session) ?? []), { entry, take: Number(fm.take), hidden: fm.hidden === true }]);
+		else entries.push(entry);
+	}
+	for (const [session, group] of takes) {
+		if (written.has(session)) continue;
+		const [first, ...rest] = group.sort((a, b) => a.take - b.take);
+		if (!first || (first.hidden && !options.includeHidden)) continue;
+		for (const { entry } of rest) first.entry.photos.push(...entry.photos);
+		first.entry.duration = formatTime(group.reduce((total, { entry }) => total + parseTime(entry.duration), 0));
+		entries.push(first.entry);
 	}
 	return entries.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 }
@@ -72,13 +93,20 @@ export async function deleteEntry(app: App, file: TFile, date: string): Promise<
 		return app.fileManager.trashFile(folder);
 	}
 
-	const fm = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-	const names = [fm.recordings, fm.photos, fm.painting].flat().filter((name): name is string => typeof name === 'string');
-	for (const name of names) {
-		const attached = app.vault.getAbstractFileByPath(normalizePath(`${folder?.path ?? ''}/${name}`));
-		if (attached instanceof TFile) await app.fileManager.trashFile(attached);
+	// A waiting phone recording is one card over several take notes: they all go
+	const session = app.metadataCache.getFileCache(file)?.frontmatter?.session as unknown;
+	const notes = (session && folder ? folder.children : [file]).filter(
+		(child): child is TFile => child instanceof TFile && child.extension === 'md' && (child === file || app.metadataCache.getFileCache(child)?.frontmatter?.session === session),
+	);
+	for (const note of notes) {
+		const fm = app.metadataCache.getFileCache(note)?.frontmatter ?? {};
+		const names = [fm.recordings, fm.photos, fm.painting].flat().filter((name): name is string => typeof name === 'string');
+		for (const name of names) {
+			const attached = app.vault.getAbstractFileByPath(normalizePath(`${folder?.path ?? ''}/${name}`));
+			if (attached instanceof TFile) await app.fileManager.trashFile(attached);
+		}
+		await app.fileManager.trashFile(note);
 	}
-	await app.fileManager.trashFile(file);
 }
 
 function text(value: unknown): string {
