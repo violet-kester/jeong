@@ -19,6 +19,8 @@ import { t } from './i18n';
  * Jeong (정) for Obsidian: record your thoughts and see them on a timeline,
  * all on your own computer.
  */
+const STORY_RETRY_MS = 60_000;
+
 /** This build's version, from the manifest when it was built (see esbuild.config.mjs). */
 declare const JEONG_VERSION: string;
 
@@ -127,13 +129,19 @@ export default class JeongPlugin extends Plugin {
 		// On a computer, write up phone recordings as they arrive through sync, and any left from before
 		if (Platform.isDesktopApp) {
 			this.app.workspace.onLayoutReady(() => {
-				if (this.settings.autoProcessLoose) void this.loose.run();
+				if (this.settings.autoProcessLoose) void this.loose.run().then(() => this.loose.writeMissingStories());
 				// Sync delivers a take's files in any order, so look again whenever anything lands in Loose pages
 				const arrived = (file: TAbstractFile) => {
 					if (this.settings.autoProcessLoose && file.parent?.path === this.loose.folder) this.loose.schedule();
 				};
 				this.registerEvent(this.app.metadataCache.on('changed', arrived));
 				this.registerEvent(this.app.vault.on('create', arrived));
+				// Stories skipped because no language model was running get written once one is
+				this.registerInterval(
+					window.setInterval(() => {
+						if (this.settings.autoProcessLoose) void this.loose.writeMissingStories();
+					}, STORY_RETRY_MS),
+				);
 			});
 		}
 

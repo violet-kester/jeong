@@ -6,7 +6,7 @@ import { TakeDraft, recoverDrafts, saveTake, readSessions } from '../src/journal
 import { Recorder } from '../src/audio/recorder';
 import { SaveQueue } from '../src/journal/save-queue';
 import { reconcile, takesIn } from '../src/journal/reconcile';
-import { listEntries } from '../src/journal/entries';
+import { entriesWaitingForStory, listEntries } from '../src/journal/entries';
 import { addRecording, writeEntry } from '../src/journal/entry-writer';
 
 const J = 'journal';
@@ -546,4 +546,18 @@ test('a photo added to an old page during write-up reaches the entry', async () 
 	assert.match(v.text(entryNotes(v)[0]!.path), /photo 1\.png/);
 	assert.equal(v.files.has(page), false);
 	assert.equal(v.files.has(`${L}/2026-11-08 1724 photo 1.png`), false);
+});
+
+test('a recent entry with no story waits for one; a written or old entry does not', async () => {
+	const v = new FakeVault();
+	await saveTake(v.app, J, S, 1, capture('one'));
+	await reconcile(deps(v, newLog()));
+	const soon = new Date(2026, 10, 9);
+	const [entry] = entriesWaitingForStory(v.app, J, soon);
+	assert.ok(entry, 'the transcribed entry waits for its story');
+	assert.equal(entriesWaitingForStory(v.app, J, new Date(2027, 0, 9)).length, 0, 'an old entry is left alone');
+	await v.app.fileManager.processFrontMatter(entry.file, (fm: Record<string, unknown>) => {
+		fm.status = 'written';
+	});
+	assert.equal(entriesWaitingForStory(v.app, J, soon).length, 0, 'a written entry is done');
 });

@@ -7,6 +7,7 @@ import type { Metrics } from '../metrics/metrics';
 import { storyMessage } from '../ui/story-messages';
 import { t } from '../i18n';
 import { looseFolder, readSessions, type Take } from './capture-store';
+import { entriesWaitingForStory } from './entries';
 import { reconcile, type SessionStatus, type Transcribed } from './reconcile';
 
 // Runs reconcile on a computer: whenever something arrives in Loose pages, after a short quiet moment, and owns the speech model.
@@ -25,6 +26,7 @@ export class CaptureProcessor {
 	private idleTimer = 0;
 	private notice: Notice | null = null;
 	private noticeMs = NOTICE_MS;
+	private storyTried = new Set<TFile>();
 	/** Runs once things settle: several arrivals close together are one run. */
 	readonly schedule = debounce(() => void this.run(), QUIET_MS, true);
 
@@ -81,20 +83,50 @@ export class CaptureProcessor {
 			} while (this.again && !this.disposed);
 		} finally {
 			this.running = false;
-			if (this.notice) {
-				const notice = this.notice;
-				this.notice = null;
-				window.setTimeout(() => notice.hide(), this.noticeMs);
-				this.noticeMs = NOTICE_MS;
-			}
+			this.releaseNotice();
 			if (!this.disposed) this.idleTimer = window.setTimeout(() => this.unloadModel(), UNLOAD_AFTER_MS);
 		}
 		return this.statuses;
 	}
 
+	/**
+	 * Writes the stories that couldn't be written earlier, once a language model is there to write them.
+	 * Each is tried once per session, so an entry that keeps failing isn't sent again and again.
+	 */
+	async writeMissingStories(): Promise<void> {
+		if (!Platform.isDesktopApp || this.disposed || this.running) return;
+		const waiting = entriesWaitingForStory(this.app, this.journalFolder()).filter((entry) => !this.storyTried.has(entry.file));
+		if (!waiting.length || !(await this.llm.isReady()) || this.running) return;
+		this.running = true;
+		try {
+			for (const entry of waiting) {
+				if (this.disposed) break;
+				this.storyTried.add(entry.file);
+				try {
+					await this.writeStoryFor(entry.file, null);
+				} catch (error) {
+					this.metrics.log({ event: 'error', where: 'retry-story', message: error instanceof Error ? error.message : String(error) });
+				}
+			}
+		} finally {
+			this.running = false;
+			this.releaseNotice();
+			if (this.again) void this.run();
+		}
+	}
+
 	private unloadModel(): void {
 		this.whisper?.dispose();
 		this.whisper = null;
+	}
+
+	/** The work is over: its last message stays long enough to read, then goes. */
+	private releaseNotice(): void {
+		if (!this.notice) return;
+		const notice = this.notice;
+		this.notice = null;
+		window.setTimeout(() => notice.hide(), this.noticeMs);
+		this.noticeMs = NOTICE_MS;
 	}
 
 	private show(message: string): void {

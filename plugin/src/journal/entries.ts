@@ -1,10 +1,12 @@
-import { App, TAbstractFile, TFile, normalizePath } from 'obsidian';
+import { App, TAbstractFile, TFile, moment, normalizePath } from 'obsidian';
 import { formatTime, parseTime } from './entry-writer';
 
 // Finds the journal's entries using Obsidian's metadata cache, so nothing has to be read
 // from disk. An entry is a note in the journal folder whose frontmatter has a date and a
 // visibility (transcripts and other notes don't). Hidden entries (hidden: true) stay in the vault
 // but are left off the timeline.
+
+const STORY_RETRY_DAYS = 14;
 
 export interface EntryInfo {
 	file: TFile;
@@ -67,6 +69,15 @@ export function listEntries(app: App, journalFolder: string, options: { includeH
 		entries.push(first.entry);
 	}
 	return entries.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+}
+
+/**
+ * Recent entries still waiting for a story, because no language model was available when they were written up.
+ * Only recent ones: an old entry left as a transcript shouldn't suddenly be rewritten.
+ */
+export function entriesWaitingForStory(app: App, journalFolder: string, now: Date = new Date()): EntryInfo[] {
+	const since = moment(now).subtract(STORY_RETRY_DAYS, 'days').format('YYYY-MM-DD');
+	return listEntries(app, journalFolder, { includeHidden: true }).filter((entry) => entry.status === 'transcribed' && !entry.summary && entry.date >= since);
 }
 
 /** The entry a note belongs to: its own, or for one take of a waiting phone recording, the card all its takes share. */
