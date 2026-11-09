@@ -14,6 +14,7 @@
 	--jeong-persimmon: #B2432F;
 	--jeong-ink: var(--jeong-meok);
 	--jeong-text-muted: #7E786F;
+	color-scheme: light;
 
 	/* The timeline's day: walnut ink (see ../styles/colors.css) */
 	--jeong-day-morning: #F7EEDC;
@@ -58,6 +59,8 @@ body.theme-dark:not(.jeong-theme-light) .jeong,
 body.jeong-theme-dark .jeong {
 	--jeong-ink: #EEE5D3;
 	--jeong-text-muted: #A69C8D;
+	/* the browser's own popups (the dropdown lists, the date pickers) in dark too */
+	color-scheme: dark;
 
 	--jeong-day-morning: #433526;
 	--jeong-day-noon: #2C231A;
@@ -1311,6 +1314,12 @@ body {
 	font-size: var(--jeong-step-0);
 	cursor: pointer;
 	transition: background-color var(--jeong-quick) var(--jeong-ease);
+}
+
+/* Its list, in Jeong's paper and ink rather than the browser's white */
+.jeong.jeong-timeline .jeong-timeline-scale select option {
+	background-color: var(--background-primary);
+	color: var(--jeong-ink);
 }
 
 @media (hover: hover) {
