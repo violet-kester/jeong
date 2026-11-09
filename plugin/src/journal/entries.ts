@@ -69,6 +69,12 @@ export function listEntries(app: App, journalFolder: string, options: { includeH
 	return entries.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 }
 
+/** The entry a note belongs to: its own, or for one take of a waiting phone recording, the card all its takes share. */
+export function findEntry(app: App, journalFolder: string, note: TFile): EntryInfo | undefined {
+	const session = text(app.metadataCache.getFileCache(note)?.frontmatter?.session);
+	return listEntries(app, journalFolder, { includeHidden: true }).find((entry) => entry.file === note || (session !== '' && entry.session === session));
+}
+
 /** Hides the entry from the timeline, or shows it again; the note and its files are untouched. */
 export async function setHidden(app: App, file: TFile, hidden: boolean): Promise<void> {
 	await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {

@@ -1065,29 +1065,31 @@ export class TimelineView extends ItemView {
 		const card = this.preview;
 		card.empty();
 		arrive(card);
+		// Scrolls if it has to; the buttons below stay in view
+		const body = card.createDiv({ cls: 'jeong-timeline-card-body' });
 		const when = moment(`${entry.date} ${entry.time || '12:00'}`);
 		// The painting leads; the photos follow in the strip
 		const rest = entry.painting ? entry.photos : entry.photos.slice(1);
 		const main = entry.painting ?? entry.photos[0];
 		if (main) {
-			card.createEl('img', {
+			body.createEl('img', {
 				cls: `jeong-timeline-card-photo${entry.painting ? ' jeong-painting' : ''}`,
 				attr: { src: this.app.vault.getResourcePath(main), alt: '' },
 			});
 		}
 		if (rest.length) {
-			const strip = card.createDiv({ cls: 'jeong-timeline-card-strip' });
+			const strip = body.createDiv({ cls: 'jeong-timeline-card-strip' });
 			for (const photo of rest.slice(0, 4)) strip.createEl('img', { attr: { src: this.app.vault.getResourcePath(photo), alt: '' } });
 			if (rest.length > 4) strip.createSpan({ cls: 'jeong-timeline-card-more', text: `+${rest.length - 4}` });
 		}
 		// The day on one line, the time and length on the next
-		const meta = card.createDiv({ cls: 'jeong-timeline-card-meta' });
+		const meta = body.createDiv({ cls: 'jeong-timeline-card-meta' });
 		meta.createDiv({ text: when.format('dddd, LL') });
 		const timeAndLength = [entry.time ? when.format('LT') : '', entry.duration].filter(Boolean).join(' · ');
 		if (timeAndLength) meta.createDiv({ text: timeAndLength });
-		card.createEl('h2', { text: entry.title });
+		body.createEl('h2', { text: entry.title });
 		const excerpt = entry.status === 'recorded' ? t('timeline.waiting') : entry.summary || (await this.excerpt(entry));
-		if (excerpt) card.createEl('p', { text: excerpt });
+		if (excerpt) body.createEl('p', { text: excerpt });
 		const actions = card.createDiv({ cls: 'jeong-timeline-card-actions' });
 		openButtonPill(actions, () => this.readStory(entry), t('story.read'));
 		if (this.canIllustrate(entry)) this.illustrateButton(actions, entry);

@@ -25,6 +25,8 @@ void start();
 async function start(): Promise<void> {
 	moment.locale(navigator.language);
 	document.body.addClass(matchMedia('(prefers-color-scheme: dark)').matches ? 'theme-dark' : 'theme-light');
+	// Obsidian sets the root font from the person's setting: ?root=12 tries one
+	if (params.has('root')) document.documentElement.style.fontSize = `${Number(params.get('root'))}px`;
 	if (Platform.isMobile) document.body.addClass('is-mobile');
 	// A stand-in for Obsidian's floating phone toolbar, to see what it covers (?phone in a desktop browser)
 	if (params.has('phone') && !/iPhone|Android/.test(navigator.userAgent)) document.body.createDiv({ cls: 'mobile-navbar' });

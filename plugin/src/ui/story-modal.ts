@@ -1,13 +1,13 @@
 import { App, Component, MarkdownRenderer, Modal, Platform, moment, setIcon } from 'obsidian';
 import type { EntryInfo } from '../journal/entries';
 import { findTranscript } from '../journal/apply-story';
-import { storyText } from '../journal/entry-note';
+import { storyText, transcriptParagraphs } from '../journal/entry-note';
 import { applyInk, type InkName } from '../paint/ink';
 import { EntryEditModal } from './entry-edit-modal';
 import { t } from '../i18n';
 
-// Reading an entry from the timeline: its picture, when it was, its title, and the story itself, with a way
-// into the story's note and the raw transcript in Obsidian.
+// Reading an entry: its picture and photos, when it was, its title, the story, and word for word what was said,
+// with a way into its note in the vault.
 
 export class StoryModal extends Modal {
 	private renderer = new Component();
@@ -46,13 +46,15 @@ export class StoryModal extends Modal {
 		page.createEl('h1', { cls: 'jeong-story-title', text: entry.title });
 
 		const body = page.createDiv({ cls: 'jeong-story-body' });
+		let story = '';
 		if (entry.status === 'recorded') {
 			body.createEl('p', { text: t('timeline.waiting') });
 		} else {
 			this.renderer.load();
-			const story = storyText(await this.app.vault.cachedRead(entry.file));
+			story = storyText(await this.app.vault.cachedRead(entry.file));
 			await MarkdownRenderer.render(this.app, story, body, entry.file.path, this.renderer);
 		}
+		await this.showTranscript(page, story);
 
 		const actions = page.createDiv({ cls: 'jeong-story-actions' });
 		// By hand, on a phone too: the words, and the photos
@@ -63,14 +65,19 @@ export class StoryModal extends Modal {
 			this.button(actions, 'mic', t('story.add'), () => record('add'));
 			this.button(actions, 'pencil', t('story.change'), () => record('change'));
 		}
-		this.action(actions, 'book-open', t('story.openNote'), () => entry.file);
-		const transcript = findTranscript(this.app, entry.file);
-		if (transcript) this.action(actions, 'align-left', t('story.openTranscript'), () => transcript);
+		this.button(actions, 'book-open', t('story.openInVault'), () => void this.app.workspace.getLeaf(false).openFile(entry.file));
 	}
 
-	/** A pill that closes the story and opens a note in Obsidian. */
-	private action(parent: HTMLElement, icon: string, label: string, file: () => EntryInfo['file']): void {
-		this.button(parent, icon, label, () => void this.app.workspace.getLeaf(false).openFile(file()));
+	/** Word for word what was said, under the story. Left out while the story is still just those same words. */
+	private async showTranscript(page: HTMLElement, story: string): Promise<void> {
+		const file = findTranscript(this.app, this.entry.file);
+		if (!file) return;
+		const paragraphs = transcriptParagraphs(await this.app.vault.cachedRead(file));
+		const squeezed = (text: string) => text.replace(/\s+/g, ' ').trim();
+		if (!paragraphs.length || squeezed(paragraphs.join(' ')) === squeezed(story)) return;
+		const section = page.createDiv({ cls: 'jeong-story-transcript' });
+		section.createEl('h2', { text: t('story.transcriptHeading') });
+		for (const text of paragraphs) section.createEl('p', { text });
 	}
 
 	/** A pill that closes the story, then does what it says. */

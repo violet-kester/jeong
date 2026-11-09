@@ -12,6 +12,9 @@ import { TakeDraft, recoverDrafts } from '../journal/capture-store';
 import { ConfirmModal } from './confirm-modal';
 import { PhotoTray, type Photo } from './photo-tray';
 import { openButtonRound } from './open-button';
+import { StoryModal } from './story-modal';
+import { findEntry } from '../journal/entries';
+import { DEFAULT_SETTINGS } from '../settings';
 import { addToStory, reviseStory, writeStory } from '../compose/write-story';
 import { storyText } from '../journal/entry-note';
 import { EntryEditModal } from './entry-edit-modal';
@@ -309,7 +312,14 @@ export class RecordModal extends Modal {
 
 	private openSaved(): void {
 		if (!this.savedNote) return;
-		void this.app.workspace.getLeaf(false).openFile(this.savedNote);
+		const entry = findEntry(this.app, this.options.journalFolder, this.savedNote);
+		if (entry) {
+			const record = (mode: 'add' | 'change') => new RecordModal(this.app, this.metrics, { ...this.options, onSaved: undefined, entry: { note: entry.file, mode } }).open();
+			new StoryModal(this.app, entry, this.options.paintInk ?? DEFAULT_SETTINGS.paintInk, record).open();
+		} else {
+			// Not on the timeline yet (Obsidian is still reading it): the note itself is there
+			void this.app.workspace.getLeaf(false).openFile(this.savedNote);
+		}
 		this.close();
 	}
 

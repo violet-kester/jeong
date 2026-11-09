@@ -11,7 +11,8 @@
 		"web": "node web/build.mjs --serve",
 		"web:build": "node web/build.mjs",
 		"lint": "eslint .",
-		"test": "node test/run.mjs"
+		"test": "node test/run.mjs",
+		"test:layout": "node test/layout.mjs"
 	},
 	"keywords": [],
 	"license": "MIT",
@@ -26,6 +27,7 @@
 		"lucide": "^1.61.0",
 		"moment": "^2.31.0",
 		"obsidian": "latest",
+		"playwright-core": "^1.57.0",
 		"typescript": "^5.8.3",
 		"typescript-eslint": "^8.59.1"
 	},
