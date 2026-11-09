@@ -74,7 +74,6 @@ function loadEntry(dir, transcriptName) {
 		title: field(note.frontmatter, 'title'),
 		summary: field(note.frontmatter, 'summary'),
 		duration: seconds(field(note.frontmatter, 'duration') || '0'),
-		review: /^review:/m.test(note.frontmatter),
 		edited,
 		story: note.story,
 		draft,
@@ -211,6 +210,9 @@ function nearestRun(entry, runs) {
 }
 
 function matchRun(entry, runs, entries) {
+	const id = field(entry.frontmatter, 'session');
+	const tagged = id && runs.filter((run) => run.llm.some((call) => call.entry === id)).pop();
+	if (tagged) return { ...tagged, llm: tagged.llm.filter((call) => call.entry === id), confidence: 'entry id' };
 	const best = nearestRun(entry, runs);
 	if (!best) return null;
 	// Two entries landing on one run can't be told apart, and a wrong cost is worse than none
@@ -301,7 +303,6 @@ function digest(entry, runs, entries) {
 	console.log(`Folder: ${entry.dir}`);
 	console.log(`Recorded ${entry.when}, ${entry.duration}s · engine: ${field(entry.frontmatter, 'engine')} · source: ${field(entry.frontmatter, 'source')}`);
 	console.log(`Graded text: ${entry.edited ? (entry.draft ? 'the AI draft (the person has edited the story since)' : 'NONE: edited, and no AI draft kept') : 'the story as saved'}`);
-	console.log(`Flagged for review by the app's own check: ${entry.review ? 'yes' : 'no'}`);
 
 	console.log('\n## Transcript');
 	entry.transcript.forEach((phrase) => console.log(`- ${phrase}`));

@@ -55,6 +55,7 @@ export class Claude implements LanguageModel {
 			promptTokens: response.usage.input_tokens + (response.usage.cache_read_input_tokens ?? 0),
 			outputTokens: response.usage.output_tokens,
 			ms: performance.now() - started,
+			truncated: response.stop_reason === 'max_tokens',
 		};
 	}
 

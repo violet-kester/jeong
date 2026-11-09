@@ -19,6 +19,8 @@ export interface ChatResult {
 	promptTokens: number;
 	outputTokens: number;
 	ms: number;
+	/** The reply was cut off before the model finished. */
+	truncated?: boolean;
 }
 
 export interface ChatOptions {
@@ -26,6 +28,8 @@ export interface ChatOptions {
 	schema?: object;
 	/** How much room the conversation needs, for models that run on this computer. */
 	contextTokens?: number;
+	/** The longest a reply may run, so a model stuck repeating itself stops. Only models on this computer need telling. */
+	maxOutputTokens?: number;
 }
 
 export interface LanguageModel {

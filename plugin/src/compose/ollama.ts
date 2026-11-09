@@ -7,6 +7,7 @@ import type { ChatMessage, ChatOptions, ChatResult, LanguageModel } from './lang
 interface OllamaResponse {
 	model: string;
 	message?: { content?: string };
+	done_reason?: string;
 	prompt_eval_count?: number;
 	eval_count?: number;
 	total_duration?: number;
@@ -33,7 +34,7 @@ export class Ollama implements LanguageModel {
 				stream: false,
 				...(options.schema ? { format: options.schema } : {}),
 				// Low temperature keeps the story close to what was said
-				options: { temperature: 0.3, num_ctx: options.contextTokens ?? 8192 },
+				options: { temperature: 0.3, num_ctx: options.contextTokens ?? 8192, ...(options.maxOutputTokens ? { num_predict: options.maxOutputTokens } : {}) },
 			}),
 		});
 		const data = response.json as OllamaResponse;
@@ -43,6 +44,7 @@ export class Ollama implements LanguageModel {
 			promptTokens: data.prompt_eval_count ?? 0,
 			outputTokens: data.eval_count ?? 0,
 			ms: data.total_duration ? data.total_duration / 1e6 : performance.now() - started,
+			truncated: data.done_reason === 'length',
 		};
 	}
 

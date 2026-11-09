@@ -6,7 +6,7 @@ import { closedSchema, type ChatMessage, type ChatOptions, type ChatResult, type
 
 interface OpenAIResponse {
 	model: string;
-	choices?: { message?: { content?: string | null; refusal?: string | null } }[];
+	choices?: { message?: { content?: string | null; refusal?: string | null }; finish_reason?: string }[];
 	usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
@@ -45,6 +45,7 @@ export class OpenAI implements LanguageModel {
 			promptTokens: data.usage?.prompt_tokens ?? 0,
 			outputTokens: data.usage?.completion_tokens ?? 0,
 			ms: performance.now() - started,
+			truncated: data.choices?.[0]?.finish_reason === 'length',
 		};
 	}
 

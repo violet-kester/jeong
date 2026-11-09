@@ -14,7 +14,7 @@ const readNote = (app: never, note: TFile) => (app as { vault: { read: (file: TF
 export async function addToStory(app: never, ollama: unknown, metrics: unknown, note: TFile, newWords: string, onProgress: (progress: StoryProgress) => void): Promise<boolean> {
 	const content = await readNote(app, note);
 	if (!storyIsEdited(content)) return writeStory(app, ollama, metrics, note, onProgress);
-	await applyStory(app, note as never, { story: `${storyText(content)}\n\nAdded: ${newWords}`, aiDraft: '', title: '', summary: '', flagged: [] }, 'demo');
+	await applyStory(app, note as never, { story: `${storyText(content)}\n\nAdded: ${newWords}`, aiDraft: '', title: '', summary: '' }, 'demo');
 	onProgress('done');
 	return true;
 }
@@ -24,20 +24,20 @@ export async function writeStory(app: never, _ollama: unknown, _metrics: unknown
 		onProgress('kept-edits');
 		return false;
 	}
-	for (const step of ['story', 'check', 'summary'] as const) {
+	for (const step of ['story', 'summary'] as const) {
 		onProgress(step);
 		await wait(900);
 	}
 	const story =
 		'Blake was in the kitchen while I sat in the dining room. It was cold outside, and the light around the mirror was on.\n\nWe made his grandmother’s soup, the one with the little dumplings. I think I’ll remember this one.';
-	await applyStory(app, note as never, { story, aiDraft: story, title: 'Soup on a Cold Night', summary: 'Blake cooked his grandmother’s soup while I sat in the dining room on a cold night.', flagged: [] }, 'demo');
+	await applyStory(app, note as never, { story, aiDraft: story, title: 'Soup on a Cold Night', summary: 'Blake cooked his grandmother’s soup while I sat in the dining room on a cold night.' }, 'demo');
 	onProgress('done');
 	return true;
 }
 
 /** Demo only: "changes" the story by noting the instructions under it, the way a real change would read them. */
 export async function reviseStory(app: never, _ollama: unknown, _metrics: unknown, note: TFile, instructions: string, onProgress: (progress: StoryProgress) => void): Promise<boolean> {
-	for (const step of ['rewrite', 'check', 'summary'] as const) {
+	for (const step of ['rewrite', 'summary'] as const) {
 		onProgress(step);
 		await wait(900);
 	}
@@ -45,7 +45,7 @@ export async function reviseStory(app: never, _ollama: unknown, _metrics: unknow
 	const title = typeof fm.title === 'string' ? fm.title : note.basename;
 	const summary = typeof fm.summary === 'string' ? fm.summary : '';
 	const story = `In the demo, a change is only pretended: here is what you asked for.\n\n${instructions}`;
-	await applyStory(app, note as never, { story, aiDraft: '', title, summary, flagged: [] }, 'demo');
+	await applyStory(app, note as never, { story, aiDraft: '', title, summary }, 'demo');
 	onProgress('done');
 	return true;
 }

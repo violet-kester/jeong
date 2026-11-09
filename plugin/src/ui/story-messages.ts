@@ -7,8 +7,6 @@ export function storyMessage(progress: StoryProgress): string {
 	switch (progress) {
 		case 'story':
 			return t('story.writing');
-		case 'check':
-			return t('story.checking');
 		case 'rewrite':
 			return t('story.rewriting');
 		case 'summary':

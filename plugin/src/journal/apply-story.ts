@@ -6,11 +6,12 @@ import { t } from '../i18n';
 
 // Puts a composed story into an entry:
 // - the entry note's text becomes the story (the recording player stays at the top)
-// - title, summary, and anything to review go into the frontmatter
+// - title and summary go into the frontmatter
 // - what the AI wrote, untouched, is kept as "<Title> (AI draft).md", for comparison (full version history comes with editing by voice)
 // - the folder and all the entry's notes are renamed to the new title (Obsidian updates links)
 
-export async function applyStory(app: App, note: TFile, composed: ComposedEntry, model: string): Promise<TFile> {
+/** False, with nothing changed, when the story was edited by hand after `before` was read. */
+export async function applyStory(app: App, note: TFile, composed: ComposedEntry, model: string, before: string): Promise<boolean> {
 	const folder = note.parent;
 	if (!folder) throw new Error('The entry has no folder');
 	const name = note.basename;
@@ -26,10 +27,24 @@ export async function applyStory(app: App, note: TFile, composed: ComposedEntry,
 		else await app.vault.create(normalizePath(`${folder.path}/${name} (AI draft).md`), draftText);
 	}
 
+	// Without its fingerprint for a moment, so a save cut off halfway reads as unwritten rather than as a hand edit
+	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
+		delete fm.storyPrint;
+	});
+
 	// The recording player stays above the story; photos stay below it
-	await app.vault.process(note, (content) =>
-		serializeEntryNote({ ...parseEntryNote(content), links: relatedLine(name, !!draft || !!composed.aiDraft), notes: [], story: composed.story }),
-	);
+	let editedMeanwhile = false;
+	await app.vault.process(note, (content) => {
+		const parsed = parseEntryNote(content);
+		editedMeanwhile = parsed.story !== before;
+		return editedMeanwhile ? content : serializeEntryNote({ ...parsed, links: relatedLine(name, !!draft || !!composed.aiDraft), notes: [], story: composed.story });
+	});
+	if (editedMeanwhile) {
+		await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
+			fm.edited = true;
+		});
+		return false;
+	}
 
 	await app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
 		if (composed.title) fm.title = composed.title;
@@ -38,12 +53,11 @@ export async function applyStory(app: App, note: TFile, composed: ComposedEntry,
 		// So a later change made right in the note can be recognized, and a spoken change counts as the person's own
 		fm.storyPrint = storyFingerprint(composed.story);
 		if (!composed.aiDraft && composed.story) fm.edited = true;
-		if (composed.flagged.length) fm.review = composed.flagged;
-		else delete fm.review;
 		fm.engine = `${typeof fm.engine === 'string' ? fm.engine.split(' · story ')[0] : ''} · story ${model}`;
 	});
 
-	return renameToTitle(app, note, folder, composed.title);
+	await renameToTitle(app, note, folder, composed.title);
+	return true;
 }
 
 /** The entry's transcript note, whether it uses the current naming or the older "transcript.md". */

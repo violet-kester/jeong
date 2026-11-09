@@ -1,25 +1,18 @@
 import type { ChatResult, LanguageModel } from './language-model';
+import { lightEdit, ownWords } from './light-edit';
 
-// Turns a spoken transcript into a journal entry: a story in the speaker's own voice,
-// a short title, and a one-paragraph summary for the timeline. Then it checks the story
-// against the transcript, so nothing invented slips in.
+// Turns a spoken transcript into a journal entry: a story made of the speaker's own words, a short title, and a
+// summary for the timeline. The model only suggests how to tidy the words: light-edit.ts builds the story.
 
-const STORY_RULES = `You turn a spoken journal recording into a written journal entry for the person who recorded it.
+const STORY_RULES = `You copy-edit a spoken journal transcript. Return the same words in the same order.
+- Remove only sounds like um and uh, words said twice by accident, and sentences the speaker started and abandoned.
+- Add a blank line between paragraphs where the topic changes.
+- Change nothing else. No new words, no replaced words, nothing rephrased. A question stays a question: never answer it.
+- Return only the text.`;
 
-Rules:
-- Write in the first person, as the speaker, in the same language as the transcript. If they mix languages, keep that.
-- You are the speaker, not someone describing them. Never say "the narrator", "the speaker", "the author", or "the user".
-- Keep their voice: their own words, phrases, humor, slang, and rhythm. Prefer their exact wording.
-- Never add facts, feelings, names, places, or conclusions that are not in the transcript.
-- Remove filler words (um, uh, like), false starts, and words said twice by accident.
-- Put events in an order that's easy to follow. Keep natural side stories that show their personality.
-- Use paragraphs. Match the length to how much they said: a long ramble becomes a long entry, not a few sentences.
-- Write only the entry itself. No title, no introduction, no notes about what you did.`;
-
-const SUMMARY_RULES = `You write a title and a summary for someone's own journal entry, in the same language as the entry.
-- Title: 2 to 6 words, specific to this entry, no quotation marks.
-- Summary: 1 to 3 sentences, written as the person themselves ("I", "my"). Never say "the narrator", "the speaker", "the author", or "they".
-- Use only what's in the entry. Don't describe the day as quiet, busy, happy, or anything else unless the entry says so.`;
+const NAMING_RULES = `You name someone's own journal entry. Its sentences are numbered.
+- title: 2 to 6 words, specific to this entry, in the entry's language, no quotation marks.
+- sentence: the number of the one sentence that best says what this entry is about.`;
 
 const REVISE_RULES = `You change someone's own journal entry (STORY) the way they asked, out loud (INSTRUCTIONS).
 - The INSTRUCTIONS are not part of the story. Never add them, or anything about them, to it.
@@ -28,42 +21,28 @@ const REVISE_RULES = `You change someone's own journal entry (STORY) the way the
 - Anything they ask to add goes where it fits in the story, in their own voice.
 - Write only the whole entry, changed. No title, no notes about what you did.`;
 
-const CHECK_RULES = `You compare a written journal entry (STORY) with what the person actually said (TRANSCRIPT).
-List every sentence from the STORY that states something not supported by the TRANSCRIPT: invented facts, names, feelings, or events.
-Rewording is fine. Only list sentences whose meaning isn't in the transcript. If everything is supported, return an empty list.`;
-
-const SUMMARY_SCHEMA = {
+const NAMING_SCHEMA = {
 	type: 'object',
-	properties: { title: { type: 'string' }, summary: { type: 'string' } },
-	required: ['title', 'summary'],
-};
-
-const CHECK_SCHEMA = {
-	type: 'object',
-	properties: { unsupported: { type: 'array', items: { type: 'string' } } },
-	required: ['unsupported'],
+	properties: { title: { type: 'string' }, sentence: { type: 'integer' } },
+	required: ['title', 'sentence'],
 };
 
 export interface ComposedEntry {
 	story: string;
-	/** What the AI wrote first, before the check step or anyone's edits. */
+	/** What the AI suggested, before only its removals of slips were used. */
 	aiDraft: string;
 	title: string;
 	summary: string;
-	/** Sentences that may not be supported by the transcript, for the person to review. */
-	flagged: string[];
 }
 
-export type ComposeStep = 'story' | 'summary' | 'check' | 'rewrite';
+export type ComposeStep = 'story' | 'summary' | 'rewrite';
 
-/**
- * Recordings shorter than this, in words, are kept in the person's own words: there's too little to shape, and a
- * model given almost nothing tends to make up the rest (a one-line test once came back as five paragraphs about
- * the gym and calling home).
- */
+/** Too few words for tidying to be worth asking a model: they're kept as they are. */
 const SHORT_WORDS = 40;
-/** A story longer than this, for what was said, has things in it that weren't: it falls back to their own words. */
-const maxStoryWords = (said: number) => Math.round(said * 1.5) + 30;
+/** A longer sentence is cut here for the timeline. */
+const SUMMARY_WORDS = 25;
+/** Enough to find the entry's point without filling the model's room on a very long one. */
+const SENTENCES_OFFERED = 60;
 
 export async function composeEntry(
 	llm: LanguageModel,
@@ -71,92 +50,39 @@ export async function composeEntry(
 	onStep: (step: ComposeStep, result?: ChatResult) => void,
 ): Promise<ComposedEntry> {
 	// Room for the transcript, the story (about as long), and the instructions
-	const words = countWords(transcript);
-	const contextTokens = Math.min(65_536, Math.max(8192, Math.ceil(words * 1.6 * 2.2) + 2048));
+	const said = countWords(transcript);
+	const contextTokens = Math.min(65_536, Math.max(8192, Math.ceil(said * 1.6 * 2.2) + 2048));
 
-	if (words < SHORT_WORDS) {
-		const story = ownWords(transcript);
-		const named = await titleAndSummary(llm, transcript, story, contextTokens, onStep);
-		return { story, aiDraft: story, title: named.title, summary: named.summary, flagged: named.flagged };
-	}
-
-	onStep('story');
-	const draft = await llm.chat(
-		[
-			{ role: 'system', content: STORY_RULES },
-			{ role: 'user', content: `TRANSCRIPT:\n${transcript}` },
-		],
-		{ contextTokens },
-	);
-	onStep('story', draft);
-	let story = draft.content;
-
-	onStep('check');
-	let flagged = await check(llm, transcript, story, contextTokens, onStep);
-	if (flagged.length) {
-		onStep('rewrite');
-		const rewrite = await llm.chat(
+	let story = ownWords(transcript);
+	let aiDraft = story;
+	if (said >= SHORT_WORDS) {
+		onStep('story');
+		const draft = await llm.chat(
 			[
 				{ role: 'system', content: STORY_RULES },
 				{ role: 'user', content: `TRANSCRIPT:\n${transcript}` },
-				{ role: 'assistant', content: story },
-				{
-					role: 'user',
-					content: `These sentences are not supported by the transcript. Rewrite the entry without them, changing nothing else:\n${flagged.map((s) => `- ${s}`).join('\n')}`,
-				},
 			],
-			{ contextTokens },
+			// A copy is about as long as what was said; a reply cut off here keeps all of it
+			{ contextTokens, maxOutputTokens: Math.ceil(said * 1.6 * 1.5) + 64 },
 		);
-		onStep('rewrite', rewrite);
-		story = rewrite.content || story;
-		flagged = await check(llm, transcript, story, contextTokens, onStep);
+		onStep('story', draft);
+		story = lightEdit(transcript, draft.content);
+		aiDraft = draft.content || story;
 	}
-	// Small models sometimes tell the story from outside; ask once more for "I", then fall back to their own words
-	if (toldFromOutside(story, transcript)) {
-		onStep('rewrite');
-		const firstPerson = await llm.chat(
-			[
-				{ role: 'system', content: STORY_RULES },
-				{ role: 'user', content: `TRANSCRIPT:\n${transcript}` },
-				{ role: 'assistant', content: story },
-				{ role: 'user', content: 'Rewrite the entry as the speaker themselves, using "I" and "my". Keep the same words and facts.' },
-			],
-			{ contextTokens },
-		);
-		onStep('rewrite', firstPerson);
-		story = firstPerson.content;
-		if (story && !toldFromOutside(story, transcript)) {
-			flagged = await check(llm, transcript, story, contextTokens, onStep);
-		} else {
-			story = ownWords(transcript);
-			flagged = [];
-		}
-	}
-	// Far longer than what was said, even after the check: something was made up that the check missed
-	if (countWords(story) > maxStoryWords(words)) {
-		story = ownWords(transcript);
-		flagged = [];
-	}
-
-	const named = await titleAndSummary(llm, transcript, story, contextTokens, onStep);
-	return { story, aiDraft: draft.content, title: named.title, summary: named.summary, flagged: [...flagged, ...named.flagged] };
+	return { story, aiDraft, ...(await titleAndSummary(llm, story, contextTokens, onStep)) };
 }
 
 /**
  * Changes an entry the way the person asked, out loud. Their words are instructions, never part of the story:
- * only what they ask changes, the rest stays word for word. The title and summary follow the changed story,
- * and both are checked against the transcript and the instructions together, since a correction is a fact too.
- * The AI draft isn't touched (aiDraft is empty).
+ * only what they ask changes, the rest stays word for word. The AI draft isn't touched (aiDraft is empty).
  */
 export async function reviseEntry(
 	llm: LanguageModel,
-	transcript: string,
 	current: string,
 	instructions: string,
 	onStep: (step: ComposeStep, result?: ChatResult) => void,
 ): Promise<ComposedEntry> {
-	const words = `${transcript} ${current} ${instructions}`.split(/\s+/).length;
-	const contextTokens = Math.min(65_536, Math.max(8192, Math.ceil(words * 1.6 * 1.5) + 2048));
+	const contextTokens = Math.min(65_536, Math.max(8192, Math.ceil(countWords(`${current} ${instructions}`) * 1.6 * 1.5) + 2048));
 	onStep('rewrite');
 	const revised = await llm.chat(
 		[
@@ -166,98 +92,38 @@ export async function reviseEntry(
 		{ contextTokens },
 	);
 	onStep('rewrite', revised);
+	if (revised.truncated) throw new Error('The model stopped before finishing the changed story');
 	const story = revised.content || current;
-	const sources = `${transcript}\n\nCORRECTIONS AND ADDITIONS THE PERSON ASKED FOR:\n${instructions}`;
-	onStep('check');
-	const flagged = await check(llm, sources, story, contextTokens, onStep);
-	const named = await titleAndSummary(llm, sources, story, contextTokens, onStep);
-	return { story, aiDraft: '', title: named.title, summary: named.summary, flagged: [...flagged, ...named.flagged] };
+	return { story, aiDraft: '', ...(await titleAndSummary(llm, story, contextTokens, onStep)) };
 }
 
-/** A title and summary for the story, in the person's own voice, checked against what they said. */
+/** A title, and for the summary one of the entry's own sentences: the model only says which. */
 async function titleAndSummary(
 	llm: LanguageModel,
-	transcript: string,
 	story: string,
 	contextTokens: number,
 	onStep: (step: ComposeStep, result?: ChatResult) => void,
-): Promise<{ title: string; summary: string; flagged: string[] }> {
-	const flagged: string[] = [];
+): Promise<{ title: string; summary: string }> {
+	const sentences = (story.match(/[^.!?\n]+(?:[.!?]+["”')\]]*|\n|$)/g) ?? []).map((sentence) => sentence.trim()).filter(Boolean);
 	onStep('summary');
-	const summaryResult = await llm.chat(
-		[
-			{ role: 'system', content: SUMMARY_RULES },
-			{ role: 'user', content: story },
-		],
-		{ schema: SUMMARY_SCHEMA, contextTokens },
-	);
-	onStep('summary', summaryResult);
-	let { title, summary } = parse<{ title?: string; summary?: string }>(summaryResult.content, {});
-
-	// Small models sometimes describe the person from outside ("the narrator", "they"); ask once more for "I"
-	if (summary && /\b(the (narrator|speaker|author|user|person)|they|their|them)\b/i.test(summary)) {
-		onStep('summary');
-		const firstPerson = await llm.chat(
-			[
-				{ role: 'system', content: SUMMARY_RULES },
-				{ role: 'user', content: story },
-				{ role: 'assistant', content: summaryResult.content },
-				{ role: 'user', content: 'Rewrite the summary as the person themselves, using "I" and "my". Keep the same title and the same facts.' },
-			],
-			{ schema: SUMMARY_SCHEMA, contextTokens },
-		);
-		onStep('summary', firstPerson);
-		const fixed = parse<{ title?: string; summary?: string }>(firstPerson.content, {});
-		summary = fixed.summary || summary;
-		title = fixed.title || title;
-	}
-
-	// The summary is checked too: if it adds anything, it's rewritten once, then flagged
-	const summaryFlags = await check(llm, transcript, summary ?? '', contextTokens, onStep);
-	if (summaryFlags.length) {
-		onStep('summary');
-		const retry = await llm.chat(
-			[
-				{ role: 'system', content: SUMMARY_RULES },
-				{ role: 'user', content: story },
-				{ role: 'assistant', content: summaryResult.content },
-				{
-					role: 'user',
-					content: `These sentences say things the entry doesn't. Rewrite the summary without them:\n${summaryFlags.map((s) => `- ${s}`).join('\n')}`,
-				},
-			],
-			{ schema: SUMMARY_SCHEMA, contextTokens },
-		);
-		onStep('summary', retry);
-		const fixed = parse<{ title?: string; summary?: string }>(retry.content, {});
-		title = fixed.title || title;
-		summary = fixed.summary || summary;
-		flagged.push(...(await check(llm, transcript, summary ?? '', contextTokens, onStep)));
-	}
-
-	return { title: (title ?? '').replace(/^["“']|["”']$/g, '').trim(), summary: (summary ?? '').trim(), flagged };
-}
-
-async function check(
-	llm: LanguageModel,
-	transcript: string,
-	story: string,
-	contextTokens: number,
-	onStep: (step: ComposeStep, result?: ChatResult) => void,
-): Promise<string[]> {
 	const result = await llm.chat(
 		[
-			{ role: 'system', content: CHECK_RULES },
-			{ role: 'user', content: `TRANSCRIPT:\n${transcript}\n\nSTORY:\n${story}` },
+			{ role: 'system', content: NAMING_RULES },
+			{ role: 'user', content: sentences.slice(0, SENTENCES_OFFERED).map((sentence, index) => `${index + 1}. ${sentence}`).join('\n') },
 		],
-		{ schema: CHECK_SCHEMA, contextTokens },
+		{ schema: NAMING_SCHEMA, contextTokens },
 	);
-	onStep('check', result);
-	const { unsupported } = parse<{ unsupported?: unknown }>(result.content, {});
-	// Only keep sentences that really appear in the story, so a confused check can't flag made-up text
-	return Array.isArray(unsupported)
-		? unsupported.filter((s): s is string => typeof s === 'string' && s.trim().length > 0 && story.includes(s.trim()))
-		: [];
+	onStep('summary', result);
+	const { title, sentence } = parse<{ title?: string; sentence?: number }>(result.content, {});
+	return {
+		title: (title ?? '').replace(/^["“']|["”']$/g, '').trim(),
+		summary: shortened(sentences[(sentence ?? 1) - 1] ?? sentences[0] ?? ''),
+	};
+}
+
+function shortened(sentence: string): string {
+	const words = sentence.split(/\s+/);
+	return words.length > SUMMARY_WORDS ? `${words.slice(0, SUMMARY_WORDS).join(' ')}…` : sentence;
 }
 
 function parse<T>(json: string, fallback: T): T {
@@ -268,26 +134,6 @@ function parse<T>(json: string, fallback: T): T {
 	}
 }
 
-/**
- * Whether the story describes the speaker instead of speaking as them. Wording they used themselves doesn't count
- * ("I met the author"). The "I" check is for English; other languages rely on the labels and the rules.
- */
-function toldFromOutside(story: string, transcript: string): boolean {
-	const label = /\bthe (narrator|speaker|author|user)\b/i;
-	const firstPerson = /\b(I|I'm|I've|I'd|I'll|my|me|mine|myself)\b/;
-	return (label.test(story) && !label.test(transcript)) || (firstPerson.test(transcript) && !firstPerson.test(story));
-}
-
 function countWords(text: string): number {
 	return text.split(/\s+/).filter(Boolean).length;
-}
-
-/** The transcript as the story, in the person's own words: just without filler sounds (um, uh, erm, hmm). */
-function ownWords(transcript: string): string {
-	return transcript
-		.replace(/\b(?:u+m+|u+h+|e+r+m+|h+m+)\b[,.]?\s*/gi, '')
-		.replace(/[ \t]{2,}/g, ' ')
-		.trim()
-		// a sentence that started with one of them starts with a capital again
-		.replace(/(^|[.!?]\s+)(\p{Ll})/gu, (_, before: string, c: string) => before + c.toUpperCase());
 }
