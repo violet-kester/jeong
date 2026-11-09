@@ -80,22 +80,24 @@ export async function renameToTitle(app: App, note: TFile, folder: TFolder, titl
 	const oldName = note.basename;
 	if (!newName || newName === oldName) return note;
 
+	// The notes first, while the index still knows them by these paths; just-written ones are found by name
+	for (const [kind, suffix] of [
+		['transcript', ' (transcript)'],
+		['draft', ' (AI draft)'],
+	] as const) {
+		const named = folder.children.find((child) => child instanceof TFile && child.name === `${oldName}${suffix}.md`);
+		const file = named instanceof TFile ? named : findByKind(app, folder, kind);
+		const path = normalizePath(`${folder.path}/${newName}${suffix}.md`);
+		if (file && !app.vault.getAbstractFileByPath(path)) await app.fileManager.renameFile(file, path);
+	}
+	const notePath = normalizePath(`${folder.path}/${newName}.md`);
+	if (!app.vault.getAbstractFileByPath(notePath)) await app.fileManager.renameFile(note, notePath);
+
 	// The folder is "<date>[ <time>] <old title>"; swap the title part
 	if (folder.name.endsWith(oldName)) {
 		const prefix = folder.name.slice(0, folder.name.length - oldName.length);
 		const target = normalizePath(`${folder.parent?.path ?? ''}/${prefix}${newName}`);
 		if (!app.vault.getAbstractFileByPath(target)) await app.fileManager.renameFile(folder, target);
 	}
-	const parent = note.parent ?? folder;
-	for (const [kind, suffix] of [
-		['transcript', ' (transcript)'],
-		['draft', ' (AI draft)'],
-	] as const) {
-		const file = findByKind(app, parent, kind);
-		const path = normalizePath(`${parent.path}/${newName}${suffix}.md`);
-		if (file && !app.vault.getAbstractFileByPath(path)) await app.fileManager.renameFile(file, path);
-	}
-	const notePath = normalizePath(`${parent.path}/${newName}.md`);
-	if (!app.vault.getAbstractFileByPath(notePath)) await app.fileManager.renameFile(note, notePath);
 	return note;
 }

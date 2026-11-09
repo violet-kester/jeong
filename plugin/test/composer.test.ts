@@ -5,6 +5,7 @@ import { FakeVault } from './fake-vault';
 import { lightEdit } from '../src/compose/light-edit';
 import { composeEntry, reviseEntry } from '../src/compose/composer';
 import { writeStory } from '../src/compose/write-story';
+import { renameToTitle } from '../src/journal/apply-story';
 import { storyFingerprint, storyIsEdited } from '../src/journal/entry-note';
 import type { ChatMessage, ChatResult, LanguageModel } from '../src/compose/language-model';
 import type { Metrics } from '../src/metrics/metrics';
@@ -166,4 +167,20 @@ test('a save cut off halfway is not mistaken for a hand edit', async () => {
 	assert.equal(await writeStory(v.app, model(() => named('New')), metrics, note(v), noSteps), false);
 	v.failOn = null;
 	assert.equal(storyIsEdited(v.data.get(NOTE) as string), false);
+});
+
+test('every note in the entry takes the new title, even ones the index has not caught up on', async () => {
+	const v = new FakeVault();
+	const old = 'j/2026-11-09 Old Words';
+	v.deliver(`${old}/Old Words.md`, '---\ntitle: Old Words\n---\n\nWords.\n');
+	v.deliver(`${old}/Old Words (transcript).md`, '---\nkind: transcript\n---\n\nWords.\n');
+	v.deliver(`${old}/Old Words (AI draft).md`, '---\nkind: draft\n---\n\nWords.\n');
+	v.uncached.add(`${old}/Old Words (transcript).md`);
+	v.uncached.add(`${old}/Old Words (AI draft).md`);
+	const renamed: string[] = [];
+	(v.app.fileManager as unknown as { renameFile: (file: unknown, path: string) => Promise<void> }).renameFile = async (_file, path) => {
+		renamed.push(path);
+	};
+	await renameToTitle(v.app, v.files.get(`${old}/Old Words.md`) as never, v.files.get(old) as never, 'New Title');
+	assert.deepEqual(renamed, [`${old}/New Title (transcript).md`, `${old}/New Title (AI draft).md`, `${old}/New Title.md`, 'j/2026-11-09 New Title']);
 });

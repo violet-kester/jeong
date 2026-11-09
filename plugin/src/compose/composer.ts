@@ -12,7 +12,7 @@ const STORY_RULES = `You copy-edit a spoken journal transcript. Return the same 
 
 const NAMING_RULES = `You name someone's own journal entry. Its sentences are numbered.
 - title: 2 to 6 words, specific to this entry, in the entry's language, no quotation marks.
-- sentence: the number of the one sentence that best says what this entry is about.`;
+- sentence: the number of the one sentence that best says what this entry is about. Not one that's only about making the recording, or testing something.`;
 
 const REVISE_RULES = `You change someone's own journal entry (STORY) the way they asked, out loud (INSTRUCTIONS).
 - The INSTRUCTIONS are not part of the story. Never add them, or anything about them, to it.
