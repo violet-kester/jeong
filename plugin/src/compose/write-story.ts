@@ -72,6 +72,7 @@ async function compose(
 	write: (transcript: string, onStep: (step: ComposeStep, result?: ChatResult) => void) => Promise<ComposedEntry>,
 ): Promise<boolean> {
 	if (!(await llm.isReady())) {
+		metrics.log({ event: 'error', where: 'write-story', message: 'The language model is not ready' });
 		onProgress('not-ready');
 		return false;
 	}

@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
 
 const targetVersion = process.env.npm_package_version;
@@ -15,3 +16,6 @@ if (!(targetVersion in versions)) {
 	versions[targetVersion] = minAppVersion;
 	writeFileSync('versions.json', JSON.stringify(versions, null, '\t'));
 }
+
+// Build under the new number, so the installed plugin, its manifest and the repo root's all agree
+execSync('npm run build', { stdio: 'inherit' });

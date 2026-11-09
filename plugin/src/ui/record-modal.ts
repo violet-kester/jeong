@@ -44,6 +44,8 @@ export interface RecordModalOptions {
 	 * written again from all of it. Change: what you say is only instructions, applied to the story.
 	 */
 	entry?: { note: TFile; mode: 'add' | 'change' };
+	/** The window has closed after saving something. */
+	onSaved?: () => void;
 }
 
 // The recording window, laid out like a letter: the date and photos down the left, and on the right
@@ -273,7 +275,7 @@ export class RecordModal extends Modal {
 		this.heading.toggleClass('is-recording', recording);
 		if (recording) {
 			this.heading.removeClass('is-saved');
-			this.heading.setText(t('record.recording.heading'));
+			this.heading.setText(t(this.voiceOnly ? 'record.recording' : 'record.recording.heading'));
 		} else if ((!this.savedNote || this.options.entry) && !this.options.test) {
 			this.heading.setText(t(this.prompt));
 		}
@@ -338,6 +340,7 @@ export class RecordModal extends Modal {
 	}
 
 	onClose(): void {
+		if (this.savedNote) this.options.onSaved?.();
 		this.horizon?.dispose();
 		window.cancelAnimationFrame(this.timerFrame);
 		this.recorder.release();
@@ -469,7 +472,8 @@ export class RecordModal extends Modal {
 		if (!this.transcriber && !this.onPhone) this.startTranscribers();
 		await this.transcriber?.listen(this.recorder.stream);
 		this.setButton(true);
-		this.status.setText(t('record.recording'));
+		// With just the button, the heading already says it, beside its red dot
+		this.status.setText(this.voiceOnly ? '' : t('record.recording'));
 		const tick = () => {
 			const seconds = Math.floor(this.recorder.elapsedMs / 1000);
 			this.timer.setText(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);

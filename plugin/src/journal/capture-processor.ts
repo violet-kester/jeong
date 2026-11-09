@@ -13,6 +13,8 @@ import { reconcile, type SessionStatus, type Transcribed } from './reconcile';
 
 const UNLOAD_AFTER_MS = 5 * 60_000; // free the graphics card when there's been nothing to do for a while
 const QUIET_MS = 3000; // sync delivers files in bursts
+const NOTICE_MS = 8000;
+const NOTICE_PROBLEM_MS = 60_000;
 
 export class CaptureProcessor {
 	statuses: SessionStatus[] = [];
@@ -22,6 +24,7 @@ export class CaptureProcessor {
 	private whisper: SpeechEngine | null = null;
 	private idleTimer = 0;
 	private notice: Notice | null = null;
+	private noticeMs = NOTICE_MS;
 	/** Runs once things settle: several arrivals close together are one run. */
 	readonly schedule = debounce(() => void this.run(), QUIET_MS, true);
 
@@ -81,7 +84,8 @@ export class CaptureProcessor {
 			if (this.notice) {
 				const notice = this.notice;
 				this.notice = null;
-				window.setTimeout(() => notice.hide(), 8000);
+				window.setTimeout(() => notice.hide(), this.noticeMs);
+				this.noticeMs = NOTICE_MS;
 			}
 			if (!this.disposed) this.idleTimer = window.setTimeout(() => this.unloadModel(), UNLOAD_AFTER_MS);
 		}
@@ -121,8 +125,9 @@ export class CaptureProcessor {
 
 	private async writeStoryFor(note: TFile, newWords: string | null): Promise<void> {
 		const onProgress = (progress: Parameters<typeof storyMessage>[0]) => this.show(storyMessage(progress));
-		if (newWords === null) await writeStory(this.app, this.llm, this.metrics, note, onProgress);
-		else await addToStory(this.app, this.llm, this.metrics, note, newWords, onProgress);
-		this.show(t('loose.done'));
+		const written = newWords === null ? await writeStory(this.app, this.llm, this.metrics, note, onProgress) : await addToStory(this.app, this.llm, this.metrics, note, newWords, onProgress);
+		if (written) this.show(t('loose.done'));
+		// No story: its message stays up, and long enough to read, saying what to do
+		else this.noticeMs = NOTICE_PROBLEM_MS;
 	}
 }

@@ -275,6 +275,19 @@ export class TimelineView extends ItemView {
 		this.pendingToday = this.scroller.clientWidth === 0;
 	}
 
+	/** Moves to the newest entry, with its card in the middle of the view: where you land after recording. */
+	goToNewest(): void {
+		const when = (e: EntryInfo) => `${e.date} ${timeOf(e)}`;
+		const newest = this.entries().reduce<EntryInfo | undefined>((latest, e) => (!latest || when(e) > when(latest) ? e : latest), undefined);
+		if (!newest) return this.goToToday();
+		const day = moment(when(newest), 'YYYY-MM-DD HH:mm');
+		this.showPeriod(day, day);
+		const card = this.cards.find((c) => c.entry.file === newest.file);
+		if (!card) return;
+		this.scroller.scrollLeft = Math.max(0, this.dayX(card.entry) - this.layout.stemOffset - this.scroller.clientWidth / 2);
+		this.scrollCardIntoView(card);
+	}
+
 	/** Draws again after a change, keeping the same date in the middle of the view. */
 	private redraw(): void {
 		if (this.pendingToday) return this.goToToday();
@@ -316,11 +329,16 @@ export class TimelineView extends ItemView {
 		if (!first) return;
 		const margin = Math.min(48, this.scroller.clientWidth * 0.12);
 		this.scroller.scrollLeft = Math.max(0, this.dayX(first.entry) - this.layout.stemOffset - margin);
+		this.scrollCardIntoView(first);
+	}
+
+	/** Scrolls up or down just enough to show a card clear of the header. */
+	private scrollCardIntoView(card: DrawnCard): void {
 		const viewTop = this.scroller.scrollTop + this.top + NUMERALS_HEIGHT;
 		const viewBottom = this.scroller.scrollTop + this.scroller.clientHeight;
-		const bottom = first.top + first.height;
-		if (first.top < viewTop) this.scroller.scrollTop -= viewTop - first.top;
-		else if (bottom > viewBottom) this.scroller.scrollTop += Math.min(bottom - viewBottom + this.layout.gap, first.top - viewTop);
+		const bottom = card.top + card.height;
+		if (card.top < viewTop) this.scroller.scrollTop -= viewTop - card.top;
+		else if (bottom > viewBottom) this.scroller.scrollTop += Math.min(bottom - viewBottom + this.layout.gap, card.top - viewTop);
 	}
 
 	/** Shows the year, month, or week that `date` falls in; `focus`, if it's in that period, goes in the middle. */

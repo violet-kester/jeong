@@ -39,6 +39,8 @@ const context = await esbuild.context({
 	},
 	entryPoints: ['src/main.ts'],
 	bundle: true,
+	// Built in, because a running Obsidian keeps the manifest it first read through hot reloads
+	define: { JEONG_VERSION: JSON.stringify(JSON.parse(fs.readFileSync('manifest.json', 'utf8')).version) },
 	external: [
 		'obsidian',
 		'electron',

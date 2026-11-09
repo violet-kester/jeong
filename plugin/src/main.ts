@@ -19,6 +19,9 @@ import { t } from './i18n';
  * Jeong (정) for Obsidian: record your thoughts and see them on a timeline,
  * all on your own computer.
  */
+/** This build's version, from the manifest when it was built (see esbuild.config.mjs). */
+declare const JEONG_VERSION: string;
+
 export default class JeongPlugin extends Plugin {
 	settings!: JeongSettings;
 	metrics!: Metrics;
@@ -38,12 +41,12 @@ export default class JeongPlugin extends Plugin {
 		);
 		addIcons();
 		this.applyTheme();
-		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, this.manifest.version);
+		this.metrics = new Metrics(this.app, () => this.settings.journalFolder, JEONG_VERSION);
 		watchRestarts(this, this.metrics);
 		const secret = (id: string) => (id ? (this.app.secretStorage.getSecret(id) ?? '') : '');
 		this.llm = new StoryWriter(() => this.settings, secret);
 		this.painter = new Painter(this.app, this.llm, this.metrics, () => this.settings, secret);
-		this.loose = new CaptureProcessor(this.app, () => this.settings.journalFolder, this.llm, this.metrics, this.manifest.version);
+		this.loose = new CaptureProcessor(this.app, () => this.settings.journalFolder, this.llm, this.metrics, JEONG_VERSION);
 
 		this.registerView(TIMELINE_VIEW, (leaf) => new TimelineView(leaf, this));
 
@@ -182,7 +185,14 @@ export default class JeongPlugin extends Plugin {
 
 	/** The recording window: a new entry, or (with `entry`) adding to or changing one. */
 	openRecorder(entry?: RecordModalOptions['entry']) {
-		new RecordModal(this.app, this.metrics, { ...this.recordOptions(), entry }).open();
+		const onSaved = entry
+			? undefined
+			: () => {
+					for (const leaf of this.app.workspace.getLeavesOfType(TIMELINE_VIEW)) {
+						if (leaf.view instanceof TimelineView) leaf.view.goToNewest();
+					}
+				};
+		new RecordModal(this.app, this.metrics, { ...this.recordOptions(), entry, onSaved }).open();
 	}
 
 	private recordOptions() {
