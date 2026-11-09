@@ -10,8 +10,14 @@ import { embed, formatTime, listOf, photoBlock, putBinary, type EntryPhoto } fro
 //   <journal>/Loose pages/2026-11-08 1724 a3f9 01 photo 1.png
 //   <journal>/Loose pages/2026-11-08 1724 a3f9 01.md      written last: this take is complete, and how big its files are
 //
-// Nothing here edits a file that has already been saved, so file sync has nothing to overwrite or merge.
+// Nothing the computer reads is edited once saved, so file sync has nothing to overwrite or merge. (The one edit is a
+// player line added to the first take's body, by the phone that wrote it, so the waiting note plays every take.)
 // The computer reads what has arrived (readSessions); only reconcile.ts removes anything.
+//
+// While a take is being recorded its audio goes into <journal>/.jeong/recording/<session> <nn>/ as numbered parts:
+// outside the vault's notes, so nothing shows it or writes it up. A killed app leaves them there, and
+// recoverDrafts turns them into a saved take the next time Jeong opens on that phone. Photos waiting to go with the
+// take are copied beside its audio, so they come back with it.
 
 export const LOOSE_FOLDER = 'Loose pages';
 
@@ -23,6 +29,8 @@ export interface Capture {
 	startedAt: Date;
 	language: string;
 	photos?: EntryPhoto[];
+	/** The parts on disk behind this recording, removed once its marker is written. */
+	draft?: TakeDraft;
 }
 
 export interface TakePiece {
@@ -104,7 +112,196 @@ export async function saveTake(app: App, journalFolder: string, session: string,
 	};
 	const player = recording ? `${embed(folder, recording.name)}\n\n` : '';
 	const names = photos.map((photo) => photo.name);
-	return app.vault.create(markerPath, `---\n${stringifyYaml(fields)}---\n\n${player}> [!info] ${t('loose.waiting')}\n${photoBlock(folder, names)}`);
+	const marker = await app.vault.create(markerPath, `---\n${stringifyYaml(fields)}---\n\n${player}> [!info] ${t('loose.waiting')}\n${photoBlock(folder, names)}`);
+	if (recording && take > 1) await addPlayerToFirstTake(app, folder, session, recording.name);
+	return marker;
+}
+
+/** So the waiting note plays every take. Only the note's body, which nothing reads; the take is saved whether or not this works. */
+async function addPlayerToFirstTake(app: App, folder: string, session: string, recording: string): Promise<void> {
+	const first = app.vault.getAbstractFileByPath(normalizePath(`${folder}/${takeBase(session, 1)}.md`));
+	if (!(first instanceof TFile)) return;
+	const player = embed(folder, recording);
+	try {
+		await app.vault.process(first, (content) => {
+			if (content.includes(player)) return content;
+			const lines = content.split('\n');
+			const last = lines.reduce((found, line, i) => (line.startsWith('![[') && line.includes(' recording.') ? i : found), -1);
+			lines.splice(last + 1, 0, player);
+			return lines.join('\n');
+		});
+	} catch (error) {
+		console.error('Jeong: could not show the new recording on its page', error);
+	}
+}
+
+/** What's needed to finish a take that was cut off. */
+interface DraftInfo {
+	session: string;
+	take: number;
+	startedAt: string;
+	mimeType: string;
+	language: string;
+}
+
+/** The drafts being recorded right now, which recovery must leave alone. */
+const activeDrafts = new Set<string>();
+
+function draftsFolder(journalFolder: string): string {
+	return normalizePath(`${journalFolder}/.jeong/recording`);
+}
+
+async function ensureAdapterFolder(app: App, path: string): Promise<void> {
+	let current = '';
+	for (const part of path.split('/')) {
+		current = current ? `${current}/${part}` : part;
+		if (!(await app.vault.adapter.exists(current))) await app.vault.adapter.mkdir(current);
+	}
+}
+
+async function readParts(app: App, directory: string, mimeType: string): Promise<{ blob: Blob; chunks: number } | null> {
+	const { files } = await app.vault.adapter.list(directory);
+	const parts = files.filter((file) => file.endsWith('.part')).sort();
+	if (!parts.length) return null;
+	const buffers: ArrayBuffer[] = [];
+	for (const part of parts) buffers.push(await app.vault.adapter.readBinary(part));
+	const chunks = parts.reduce((total, part) => total + (Number(/-(\d+)\.part$/.exec(part)?.[1]) || 0), 0);
+	return { blob: new Blob(buffers, { type: mimeType }), chunks };
+}
+
+/** The photos kept with a draft, in the order the tray had them. One the list missed (cut off just after writing it) still counts. */
+async function readDraftPhotos(app: App, directory: string): Promise<EntryPhoto[]> {
+	const { files } = await app.vault.adapter.list(directory);
+	const onDisk = files.map((file) => file.slice(file.lastIndexOf('/') + 1)).filter((name) => /^photo-\d+\.[^.]+$/.test(name)).sort();
+	let listed: unknown = [];
+	try {
+		listed = JSON.parse(await app.vault.adapter.read(`${directory}/photos.json`));
+	} catch {
+		// No list, or one cut off mid-write: the photos themselves are what matter
+	}
+	const order = (Array.isArray(listed) ? listed : []).filter((name): name is string => onDisk.includes(name as string));
+	const photos: EntryPhoto[] = [];
+	for (const name of [...order, ...onDisk.filter((file) => !order.includes(file))]) {
+		photos.push({ name, type: '', data: new Blob([await app.vault.adapter.readBinary(`${directory}/${name}`)]) });
+	}
+	return photos;
+}
+
+/** A take's audio on disk while it's being recorded. Numbered files rather than one growing file, because a plain write is all that's needed of the phone. */
+export class TakeDraft {
+	private part = 0;
+	private photoNumber = 0;
+	private keptPhotos = new Map<Blob, string>();
+	private photoWrites: Promise<void> = Promise.resolve();
+
+	private constructor(
+		private app: App,
+		private directory: string,
+		private info: DraftInfo,
+	) {}
+
+	static async open(app: App, journalFolder: string, info: DraftInfo): Promise<TakeDraft> {
+		const directory = normalizePath(`${draftsFolder(journalFolder)}/${takeBase(info.session, info.take)}`);
+		await ensureAdapterFolder(app, directory);
+		await app.vault.adapter.write(`${directory}/draft.json`, JSON.stringify(info));
+		activeDrafts.add(directory);
+		return new TakeDraft(app, directory, info);
+	}
+
+	async writePart(data: Blob, chunks: number): Promise<void> {
+		const number = String(this.part + 1).padStart(6, '0');
+		await this.app.vault.adapter.writeBinary(`${this.directory}/${number}-${chunks}.part`, await data.arrayBuffer());
+		this.part++;
+	}
+
+	/** Makes the photos on disk match these, in this order. Never fails: a photo that can't be copied mustn't stop the recording. */
+	keepPhotos(photos: EntryPhoto[]): Promise<void> {
+		this.photoWrites = this.photoWrites.then(() => this.writePhotos(photos)).catch((error: unknown) => console.error('Jeong: could not keep a photo with the recording', error));
+		return this.photoWrites;
+	}
+
+	private async writePhotos(photos: EntryPhoto[]): Promise<void> {
+		const adapter = this.app.vault.adapter;
+		const wanted = new Set(photos.map((photo) => photo.data));
+		for (const [data, name] of this.keptPhotos) {
+			if (wanted.has(data)) continue;
+			await adapter.remove(`${this.directory}/${name}`);
+			this.keptPhotos.delete(data);
+		}
+		for (const photo of photos) {
+			if (this.keptPhotos.has(photo.data)) continue;
+			const name = `photo-${String(++this.photoNumber).padStart(3, '0')}.${photoExtension(photo)}`;
+			// Renamed into place, so a kill mid-write can't leave half a picture to be recovered
+			await adapter.writeBinary(`${this.directory}/${name}.tmp`, await photo.data.arrayBuffer());
+			await adapter.rename(`${this.directory}/${name}.tmp`, `${this.directory}/${name}`);
+			this.keptPhotos.set(photo.data, name);
+		}
+		await adapter.write(`${this.directory}/photos.json`, JSON.stringify(photos.map((photo) => this.keptPhotos.get(photo.data))));
+	}
+
+	async assemble(): Promise<Blob> {
+		return (await readParts(this.app, this.directory, this.info.mimeType))?.blob ?? new Blob([], { type: this.info.mimeType });
+	}
+
+	/** This window is done with it; if it's still here, the next recovery may finish it. */
+	release(): void {
+		activeDrafts.delete(this.directory);
+	}
+
+	async remove(): Promise<void> {
+		this.release();
+		await this.photoWrites;
+		await this.app.vault.adapter.rmdir(this.directory, true);
+	}
+}
+
+let recovering: Promise<number> = Promise.resolve(0);
+
+/**
+ * Finishes takes that were cut off, by giving them the marker they never got. Runs on the phone that recorded them.
+ * Returns how many were saved. A draft that can't be finished stays for next time.
+ */
+export function recoverDrafts(app: App, journalFolder: string): Promise<number> {
+	recovering = recovering.then(() => recoverAll(app, journalFolder), () => recoverAll(app, journalFolder));
+	return recovering;
+}
+
+async function recoverAll(app: App, journalFolder: string): Promise<number> {
+	const root = draftsFolder(journalFolder);
+	if (!(await app.vault.adapter.exists(root))) return 0;
+	let saved = 0;
+	for (const directory of (await app.vault.adapter.list(root)).folders) {
+		if (activeDrafts.has(directory)) continue;
+		try {
+			if (await recoverDraft(app, journalFolder, directory)) saved++;
+		} catch (error) {
+			console.error('Jeong: could not recover a recording', error);
+		}
+	}
+	return saved;
+}
+
+async function recoverDraft(app: App, journalFolder: string, directory: string): Promise<boolean> {
+	const info = JSON.parse(await app.vault.adapter.read(`${directory}/draft.json`)) as DraftInfo;
+	const marker = normalizePath(`${looseFolder(journalFolder)}/${takeBase(info.session, info.take)}.md`);
+	if (app.vault.getAbstractFileByPath(marker)) {
+		// Killed between the marker and the tidying up
+		await app.vault.adapter.rmdir(directory, true);
+		return false;
+	}
+	const parts = await readParts(app, directory, info.mimeType);
+	// A first take with no audio never happened; a later one still needs its number, so the takes after it aren't held up
+	if (parts || info.take > 1) {
+		await saveTake(app, journalFolder, info.session, info.take, {
+			...(parts ? { recording: parts.blob, mimeType: info.mimeType } : {}),
+			durationMs: (parts?.chunks ?? 0) * 1000,
+			startedAt: new Date(info.startedAt),
+			language: info.language,
+			photos: await readDraftPhotos(app, directory),
+		});
+	}
+	await app.vault.adapter.rmdir(directory, true);
+	return parts !== null;
 }
 
 /** Every session waiting in Loose pages, oldest first, from whatever has arrived so far. */

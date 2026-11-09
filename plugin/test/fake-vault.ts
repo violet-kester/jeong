@@ -10,6 +10,9 @@ export class FakeVault {
 	readonly files = new Map<string, TFile | TFolder>();
 	readonly data = new Map<string, Stored>();
 	readonly trashed: string[] = [];
+	/** Outside the vault's index, like Obsidian's adapter. */
+	readonly disk = new Map<string, string | ArrayBuffer>();
+	readonly dirs = new Set<string>();
 	writes = 0;
 	failOn: ((action: string, path: string) => boolean) | null = null;
 	/** Pretend the metadata cache hasn't caught up on these paths. */
@@ -78,6 +81,33 @@ export class FakeVault {
 
 	readonly app = {
 		vault: {
+			adapter: {
+				exists: async (path: string) => this.disk.has(path) || [...this.disk.keys()].some((key) => key.startsWith(`${path}/`)) || this.dirs.has(path),
+				mkdir: async (path: string) => void this.dirs.add(path),
+				write: async (path: string, data: string) => void this.disk.set(path, data),
+				read: async (path: string) => this.disk.get(path) as string,
+				writeBinary: async (path: string, data: ArrayBuffer) => {
+					this.check('writeBinary', path);
+					this.disk.set(path, data);
+				},
+				readBinary: async (path: string) => this.disk.get(path) as ArrayBuffer,
+				rename: async (from: string, to: string) => {
+					this.disk.set(to, this.disk.get(from) as ArrayBuffer);
+					this.disk.delete(from);
+				},
+				remove: async (path: string) => void this.disk.delete(path),
+				list: async (path: string) => {
+					const children = [...this.disk.keys()].filter((key) => key.startsWith(`${path}/`)).map((key) => key.slice(path.length + 1));
+					return {
+						files: children.filter((key) => !key.includes('/')).map((key) => `${path}/${key}`),
+						folders: [...new Set(children.filter((key) => key.includes('/')).map((key) => `${path}/${key.split('/')[0]}`))],
+					};
+				},
+				rmdir: async (path: string) => {
+					for (const key of [...this.disk.keys()]) if (key.startsWith(`${path}/`)) this.disk.delete(key);
+					this.dirs.delete(path);
+				},
+			},
 			getAbstractFileByPath: (path: string) => this.files.get(normalizePath(path)) ?? null,
 			getMarkdownFiles: () => this.notes(),
 			createFolder: async (path: string) => this.makeFolder(normalizePath(path)),

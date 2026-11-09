@@ -1,5 +1,6 @@
 import { Notice, Platform, Plugin, TFile, type TAbstractFile } from 'obsidian';
 import { CaptureProcessor } from './journal/capture-processor';
+import { recoverDrafts } from './journal/capture-store';
 import { StoryWriter } from './compose/language-model';
 import { writeStory } from './compose/write-story';
 import { paintMessage, storyMessage } from './ui/story-messages';
@@ -116,6 +117,9 @@ export default class JeongPlugin extends Plugin {
 				});
 			},
 		});
+
+		// On a phone, a recording cut off by the app being closed or killed becomes a saved take
+		if (Platform.isMobile) this.app.workspace.onLayoutReady(() => void recoverDrafts(this.app, this.settings.journalFolder));
 
 		// On a computer, write up phone recordings as they arrive through sync, and any left from before
 		if (Platform.isDesktopApp) {

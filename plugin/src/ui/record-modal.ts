@@ -8,6 +8,7 @@ import { checkWebGpu } from '../diagnostics/webgpu';
 import { deleteTemp, extensionFor, saveToTemp } from '../storage/temp-file';
 import { addPhotos, addRecording, writeEntry } from '../journal/entry-writer';
 import { SaveQueue } from '../journal/save-queue';
+import { TakeDraft, recoverDrafts } from '../journal/capture-store';
 import { ConfirmModal } from './confirm-modal';
 import { PhotoTray, type Photo } from './photo-tray';
 import { openButtonRound } from './open-button';
@@ -92,6 +93,9 @@ export class RecordModal extends Modal {
 	private photoWrites: Promise<void> = Promise.resolve();
 	/** Phone recordings on their way into the journal. */
 	private saves!: SaveQueue;
+	/** The take being recorded on a phone: its number, and its audio on disk as it goes. */
+	private reservedTake: number | null = null;
+	private draft: TakeDraft | null = null;
 	private retryButton!: HTMLButtonElement;
 	private doneAction!: HTMLElement;
 	/** The left column: the date, then the photos, then (once saved, without photos) Illustrate. */
@@ -137,6 +141,7 @@ export class RecordModal extends Modal {
 			side.createDiv({ cls: 'jeong-entry-label', text: t('record.photos') });
 			this.photos = new PhotoTray(side);
 			this.photos.onAdd = () => this.saveLatePhotos();
+			this.photos.onChange = () => this.keepDraftPhotos();
 		}
 
 		// Right: the page
@@ -201,6 +206,8 @@ export class RecordModal extends Modal {
 		this.modalEl.addClass('is-voice-only');
 		const main = this.contentEl.createDiv({ cls: 'jeong-voice' });
 		this.saves = new SaveQueue(this.app, this.options.journalFolder);
+		// Anything cut off last time becomes a saved take, before this window's own
+		void recoverDrafts(this.app, this.options.journalFolder);
 		// Today, so no year: short enough to sit on one line, clear of the close button
 		main.createDiv({ cls: 'jeong-voice-date', text: now.format('ddd, MMM D · LT') });
 
@@ -228,6 +235,7 @@ export class RecordModal extends Modal {
 		const foot = main.createDiv({ cls: 'jeong-voice-foot' });
 		this.photos = new PhotoTray(foot, t('photos.addShort'), stripHost);
 		this.photos.onAdd = () => this.saveLatePhotos();
+		this.photos.onChange = () => this.keepDraftPhotos();
 		const more = foot.createEl('details', { cls: 'jeong-record-more' });
 		const summary = more.createEl('summary');
 		setIcon(summary.createSpan({ cls: 'jeong-voice-pill-icon' }), 'align-left');
@@ -333,6 +341,8 @@ export class RecordModal extends Modal {
 		this.horizon?.dispose();
 		window.cancelAnimationFrame(this.timerFrame);
 		this.recorder.release();
+		// Closed mid-recording: what's on disk is kept, and recovery saves it next time
+		this.draft?.release();
 		// A save still under way needs its photos; they're let go once it's finished
 		void this.stopping
 			.then(() => this.photoWrites)
@@ -439,7 +449,7 @@ export class RecordModal extends Modal {
 
 	private async start(): Promise<void> {
 		try {
-			await this.recorder.start();
+			await this.recorder.start(this.onPhone ? (mimeType) => this.openDraft(mimeType) : undefined);
 		} catch {
 			this.status.setText(t('record.noMicrophone'));
 			this.metrics.log({ event: 'error', where: 'microphone', message: 'Could not start the microphone' });
@@ -472,7 +482,16 @@ export class RecordModal extends Modal {
 		this.horizon?.stop();
 		window.cancelAnimationFrame(this.timerFrame);
 		const liveDone = this.transcriber?.finish() ?? Promise.resolve();
-		const recording = await this.recorder.stop();
+		let recording: Recording;
+		try {
+			recording = await this.recorder.stop();
+		} catch (error) {
+			// The parts are still on disk, and recovery will save them
+			this.draft?.release();
+			this.draft = null;
+			this.showSaveFailed(error);
+			return;
+		}
 		this.totalMs += recording.durationMs;
 		this.setButton(false);
 		this.button.disabled = true;
@@ -643,6 +662,10 @@ export class RecordModal extends Modal {
 
 	/** On a phone: save the recording to Loose pages, to be written up on a computer later. */
 	private async saveLoose(recording: Recording): Promise<void> {
+		const take = this.reservedTake ?? undefined;
+		const draft = this.draft ?? undefined;
+		this.reservedTake = null;
+		this.draft = null;
 		this.saves.add({
 			recording: recording.blob,
 			mimeType: recording.mimeType,
@@ -650,8 +673,23 @@ export class RecordModal extends Modal {
 			startedAt: this.startedAt,
 			language: this.language,
 			photos: photoData(this.photos.claim()),
-		});
+			draft,
+		}, take);
 		await this.flushSaves();
+	}
+
+	private async openDraft(mimeType: string): Promise<TakeDraft> {
+		const startedAt = new Date();
+		const { session, take } = this.saves.reserve(startedAt);
+		this.reservedTake = take;
+		this.draft = await TakeDraft.open(this.app, this.options.journalFolder, { session, take, startedAt: startedAt.toISOString(), mimeType, language: this.language });
+		this.keepDraftPhotos();
+		return this.draft;
+	}
+
+	/** Photos waiting to go with the take being recorded are copied beside its audio, so a killed app can't lose them. */
+	private keepDraftPhotos(): void {
+		void this.draft?.keepPhotos(photoData(this.photos.photos.filter((photo) => !photo.saved)));
 	}
 
 	private async flushSaves(): Promise<void> {

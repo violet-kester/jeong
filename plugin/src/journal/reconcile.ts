@@ -94,7 +94,7 @@ async function reconcileSession(deps: ReconcileDeps, session: CaptureSession): P
 		expected++;
 	}
 
-	if (session.oldPage && !waiting) await finishOldPage(deps, session, done);
+	if (session.oldPage && note && !waiting) waiting = await finishOldPage(deps, session, done, note, first.startedAt);
 	if (note && (created || newWords.length)) {
 		try {
 			await deps.story(note, created ? null : newWords.join('\n\n'));
@@ -184,23 +184,38 @@ async function removeTake(deps: ReconcileDeps, session: CaptureSession, take: Ta
 	if (!session.oldPage) await app.fileManager.trashFile(take.marker);
 }
 
-/** An older page goes last, and only if it lists nothing beyond what the entry now holds. */
-async function finishOldPage(deps: ReconcileDeps, session: CaptureSession, done: Set<number>): Promise<void> {
+/**
+ * An older page goes last, and only once it lists nothing beyond what the entry holds. It can still gain photos, so its
+ * list is read fresh and the photos are added under fixed names, which makes adding them twice harmless.
+ */
+async function finishOldPage(deps: ReconcileDeps, session: CaptureSession, done: Set<number>, note: TFile, startedAt: Date): Promise<string> {
 	const { app, journalFolder } = deps;
 	const page = session.oldPage;
-	if (!page) return;
-	const listed = listedRecordings(await app.vault.read(page));
-	if (listed.length && !listed.every((_, i) => done.has(i + 1))) return;
-	for (const { name } of session.takes[0]?.photos ?? []) {
-		const file = app.vault.getAbstractFileByPath(normalizePath(`${looseFolder(journalFolder)}/${name}`));
-		if (file instanceof TFile) await app.fileManager.trashFile(file);
-	}
+	if (!page) return '';
+	const content = await app.vault.read(page);
+	if (!listedIn(content, 'recordings').every((_, i) => done.has(i + 1))) return '';
+	const folder = looseFolder(journalFolder);
+	const stamp = moment(startedAt).format('YYYY-MM-DD HHmm');
+	const names = listedIn(content, 'photos');
+	const files = names.map((name) => app.vault.getAbstractFileByPath(normalizePath(`${folder}/${name}`)));
+	const missing = names.filter((_, i) => !(files[i] instanceof TFile));
+	if (missing.length) return `waiting for ${missing.join(', ')}`;
+	const photos = files.filter((file): file is TFile => file instanceof TFile);
+	const data: EntryPhoto[] = [];
+	for (const [i, file] of photos.entries()) data.push({ name: file.name, type: '', data: new Blob([await app.vault.readBinary(file)]), fileName: `${stamp} photo ${i + 1}.${file.extension}` });
+	await addPhotos(app, note, data, startedAt);
+	for (const file of photos) await app.fileManager.trashFile(file);
 	await app.fileManager.trashFile(page);
+	return '';
 }
 
-function listedRecordings(content: string): string[] {
-	const block = /^recordings:\s*\n((?:\s+-\s.*\n?)*)/m.exec(content)?.[1];
-	return block ? block.split('\n').filter((line) => line.trim().startsWith('-')) : [];
+/** A frontmatter list, read from the note itself, since an older page can change while it's being written up. */
+function listedIn(content: string, key: string): string[] {
+	const block = new RegExp(`^${key}:\\s*\\n((?:\\s+-\\s.*\\n?)*)`, 'm').exec(content)?.[1] ?? '';
+	return block
+		.split('\n')
+		.filter((line) => line.trim().startsWith('-'))
+		.map((line) => line.trim().replace(/^-\s*/, '').replace(/^["']|["']$/g, ''));
 }
 
 /** The take numbers an entry lists, read from the note itself so a just-written entry is seen before the cache catches up. */

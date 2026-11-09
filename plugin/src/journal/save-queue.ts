@@ -23,9 +23,15 @@ export class SaveQueue {
 		return this.waiting.length > 0;
 	}
 
-	add(capture: Capture): void {
+	/** Holds the next take number for a recording that's starting, so a recording cut off keeps its place. */
+	reserve(startedAt: Date): { session: string; take: number } {
+		this.session ??= newSessionId(startedAt);
+		return { session: this.session, take: this.nextTake++ };
+	}
+
+	add(capture: Capture, take?: number): void {
 		this.session ??= newSessionId(capture.startedAt);
-		this.waiting.push({ take: this.nextTake++, capture });
+		this.waiting.push({ take: take ?? this.nextTake++, capture });
 	}
 
 	/** Writes everything waiting, oldest first. Throws if one can't be written; it and those after it stay waiting. */
@@ -40,6 +46,7 @@ export class SaveQueue {
 
 	/** Gives up on what's waiting, when the person chooses to. */
 	discard(): void {
+		this.waiting.forEach(({ capture }) => void capture.draft?.remove().catch(() => undefined));
 		this.waiting = [];
 		this.failed = false;
 	}
@@ -50,6 +57,8 @@ export class SaveQueue {
 				const marker = await saveTake(this.app, this.journalFolder, this.session ?? '', next.take, next.capture);
 				this.first ??= marker;
 				this.waiting.shift();
+				// Only now that the marker exists can the parts behind it go
+				await next.capture.draft?.remove().catch((error: unknown) => console.error('Jeong: could not tidy up a recording', error));
 			}
 			this.failed = false;
 			return this.first;

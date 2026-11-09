@@ -19,6 +19,8 @@ export class PhotoTray {
 	private dragFrom = -1;
 	/** Called when photos are added, so a window with a saved entry can write them straight away. */
 	onAdd: (() => void) | null = null;
+	/** Called after photos are added, removed or reordered. */
+	onChange: (() => void) | null = null;
 
 	/**
 	 * `label` replaces the button's words, e.g. a shorter "Add photos" where space is tight.
@@ -60,6 +62,7 @@ export class PhotoTray {
 		}
 		this.render();
 		this.onAdd?.();
+		this.onChange?.();
 	}
 
 	/** Takes the photos not written yet and marks them as written, so nothing else writes them too. */
@@ -103,6 +106,7 @@ export class PhotoTray {
 					URL.revokeObjectURL(photo.url);
 					this.photos.splice(index, 1);
 					this.render();
+					this.onChange?.();
 				});
 			}
 
@@ -125,6 +129,7 @@ export class PhotoTray {
 		const [photo] = this.photos.splice(from, 1);
 		if (photo) this.photos.splice(to, 0, photo);
 		this.render();
+		this.onChange?.();
 	}
 }
 
