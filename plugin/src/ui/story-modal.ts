@@ -28,24 +28,27 @@ export class StoryModal extends Modal {
 		const page = this.contentEl.createDiv({ cls: 'jeong-story-page' });
 		applyInk(page, this.ink);
 
+		// The words scroll; the buttons have their own place under them, so the two never overlap
+		const scroll = page.createDiv({ cls: 'jeong-story-scroll' });
+
 		// The painting leads, then the photos
 		const [main, ...rest] = [entry.painting, ...entry.photos].filter((file) => file !== null);
 		if (main) {
-			page.createEl('img', {
+			scroll.createEl('img', {
 				cls: `jeong-story-picture${main === entry.painting ? ' jeong-painting' : ''}`,
 				attr: { src: this.app.vault.getResourcePath(main), alt: '' },
 			});
 			if (rest.length) {
-				const strip = page.createDiv({ cls: 'jeong-story-strip' });
+				const strip = scroll.createDiv({ cls: 'jeong-story-strip' });
 				for (const photo of rest) strip.createEl('img', { attr: { src: this.app.vault.getResourcePath(photo), alt: '' } });
 			}
 		}
 
 		const meta = [moment(`${entry.date} ${entry.time || '12:00'}`).format(entry.time ? 'LLLL' : 'LL'), entry.duration].filter(Boolean).join(' · ');
-		page.createDiv({ cls: 'jeong-story-meta', text: meta });
-		page.createEl('h1', { cls: 'jeong-story-title', text: entry.title });
+		scroll.createDiv({ cls: 'jeong-story-meta', text: meta });
+		scroll.createEl('h1', { cls: 'jeong-story-title', text: entry.title });
 
-		const body = page.createDiv({ cls: 'jeong-story-body' });
+		const body = scroll.createDiv({ cls: 'jeong-story-body' });
 		let story = '';
 		if (entry.status === 'recorded') {
 			body.createEl('p', { text: t('timeline.waiting') });
@@ -54,7 +57,7 @@ export class StoryModal extends Modal {
 			story = storyText(await this.app.vault.cachedRead(entry.file));
 			await MarkdownRenderer.render(this.app, story, body, entry.file.path, this.renderer);
 		}
-		await this.showTranscript(page, story);
+		await this.showTranscript(scroll, story);
 
 		const actions = page.createDiv({ cls: 'jeong-story-actions' });
 		// By hand, on a phone too: the words, and the photos

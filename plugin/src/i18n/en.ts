@@ -151,7 +151,10 @@ export const en = {
 	'photos.makeMain': 'Make this the main photo',
 	'photos.remove': 'Remove this photo',
 
-	'loose.title': 'Recording',
+	'loose.title.morning': 'morning recording',
+	'loose.title.afternoon': 'afternoon recording',
+	'loose.title.evening': 'evening recording',
+	'loose.title.night': 'night recording',
 	'loose.processing': 'Writing up your recording from',
 	'loose.preparing': 'Getting the transcriber ready…',
 	'loose.transcribing': 'Transcribing your recording…',

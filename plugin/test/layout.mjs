@@ -80,6 +80,14 @@ async function checkPreview(browser, root) {
 	const actions = await box(page, '.jeong-timeline-card-actions');
 	assert.ok(actions.bottom <= preview.bottom + 1, `preview hides its buttons at root ${root}`);
 	assert.ok(preview.bottom <= 620, `preview runs off the pane at root ${root}`);
+	await page.getByText('Read the story', { exact: true }).click();
+	await page.waitForSelector('.jeong-story-actions');
+	await page.waitForTimeout(400);
+	const story = await box(page, '.modal.jeong-story');
+	const words = await box(page, '.jeong-story-scroll');
+	const buttons = await box(page, '.jeong-story-actions');
+	assert.ok(words.bottom <= buttons.top + 1, `the story runs under its buttons at root ${root}`);
+	near(buttons.bottom, story.bottom, `nothing shows below the story's buttons at root ${root}`);
 	await page.close();
 }
 

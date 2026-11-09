@@ -561,3 +561,9 @@ test('a recent entry with no story waits for one; a written or old entry does no
 	});
 	assert.equal(entriesWaitingForStory(v.app, J, soon).length, 0, 'a written entry is done');
 });
+
+test('a waiting recording is named for when it was made', async () => {
+	const v = new FakeVault();
+	const marker = await saveTake(v.app, J, S, 1, capture('one'));
+	assert.match(await v.app.vault.read(marker), /^title: Sunday evening recording$/m);
+});

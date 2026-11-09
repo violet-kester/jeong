@@ -2653,14 +2653,30 @@ body {
 }
 
 .jeong-story .modal-content {
-	overflow-y: auto;
+	overflow: hidden;
 	max-height: var(--jeong-story-height);
+	padding: 0;
 }
 
 .jeong-story-page {
+	display: flex;
+	flex-direction: column;
+	max-height: var(--jeong-story-height);
+}
+
+.jeong-story-scroll {
+	--jeong-story-fade: var(--jeong-space-l);
+	flex: 1;
+	min-height: 0;
 	display: grid;
 	gap: var(--jeong-space-s);
-	padding: var(--jeong-space-l) var(--jeong-space-xl) 0;
+	/* room at the end, so the last line clears the fade */
+	padding: var(--jeong-space-l) var(--jeong-space-xl) var(--jeong-story-fade);
+	overflow-y: auto;
+	scrollbar-width: none;
+	/* words dissolve as they reach the buttons */
+	-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--jeong-story-fade)), transparent);
+	mask-image: linear-gradient(to bottom, #000 calc(100% - var(--jeong-story-fade)), transparent);
 }
 
 .jeong-story-picture {
@@ -2726,15 +2742,11 @@ body {
 }
 
 .jeong-story-actions {
-	/* always in reach, however long the story */
-	position: sticky;
-	bottom: 0;
+	flex: none;
 	display: flex;
 	flex-wrap: wrap;
 	gap: var(--jeong-space-2xs);
-	padding-block: var(--jeong-space-xs) var(--jeong-space-s);
-	background: var(--jeong-card);
-	border-top: 1px solid var(--jeong-hairline);
+	padding: 0 var(--jeong-space-xl) var(--jeong-space-s);
 }
 
 /* Editing an entry by hand */

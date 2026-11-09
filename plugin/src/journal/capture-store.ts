@@ -95,7 +95,7 @@ export async function saveTake(app: App, journalFolder: string, session: string,
 	const when = moment(capture.startedAt);
 	const seconds = capture.durationMs / 1000;
 	const fields = {
-		title: t('loose.title'),
+		title: waitingTitle(when),
 		date: when.format('YYYY-MM-DD'),
 		time: when.format('HH:mm'),
 		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -115,6 +115,13 @@ export async function saveTake(app: App, journalFolder: string, session: string,
 	const marker = await app.vault.create(markerPath, `---\n${stringifyYaml(fields)}---\n\n${player}> [!info] ${t('loose.waiting')}\n${photoBlock(folder, names)}`);
 	if (recording && take > 1) await addPlayerToFirstTake(app, folder, session, recording.name);
 	return marker;
+}
+
+/** What a recording is called until the computer names it from its words: "Sunday evening recording". */
+function waitingTitle(when: moment.Moment): string {
+	const hour = when.hour();
+	const part = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
+	return `${when.format('dddd')} ${t(`loose.title.${part}`)}`;
 }
 
 /** So the waiting note plays every take. Only the note's body, which nothing reads; the take is saved whether or not this works. */
